@@ -42,3 +42,18 @@ main = hspec $ do
       let package = AuthorizedNetworkPackage (maybe Nothing (Just . C8.pack) x) (maybe Nothing (Just . C8.pack) y) $ NetUnknownPackage $ C8.pack z
           program = readP_to_S parsePackage $ show package
       program `shouldBe` [([package], "")]
+
+    it "Ping becomes itself" $ do
+      let package = AuthorizedNetworkPackage Nothing Nothing NetPing
+          program = readP_to_S parsePackage $ show package
+      program `shouldBe` [([package], "")]
+
+    it "Pong becomes itself" $ do
+      let package = AuthorizedNetworkPackage Nothing Nothing NetPong
+          program = readP_to_S parsePackage $ show package
+      program `shouldBe` [([package], "")]
+
+    it "GetVersion becomes itself" $ do
+      let package = AuthorizedNetworkPackage Nothing Nothing NetGetVersion
+          program = readP_to_S parsePackage $ show package
+      program `shouldBe` [([package], "")]
