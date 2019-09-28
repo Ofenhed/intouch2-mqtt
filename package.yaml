@@ -35,6 +35,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - deconz-intouch2
+    - network
 
 tests:
   deconz-intouch2-test:

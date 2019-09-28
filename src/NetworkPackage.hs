@@ -4,6 +4,7 @@ import qualified Data.ByteString.Char8 as C8
 
 data NetworkPackageData = NetPing
                         | NetPong
+                        | NetGetVersion
                         | NetUnknownPackage C8.ByteString
                         deriving (Eq)
 
@@ -16,6 +17,7 @@ data NetworkPackage = AuthorizedNetworkPackage { networkPackageSrc :: Maybe C8.B
 instance Show NetworkPackageData where
   show NetPing = "APING"
   show NetPong = "APING."
+  show NetGetVersion = "AVERSJ"
   show (NetUnknownPackage x) = C8.unpack x
 
 instance Show NetworkPackage where

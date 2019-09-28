@@ -41,4 +41,5 @@ parseAuthorizedPackage = do
   return $ AuthorizedNetworkPackage sender destination $ case d of
                                                            "APING" -> NetPing
                                                            "APING." -> NetPong
+                                                           "AVERSJ" -> NetGetVersion
                                                            d' -> NetUnknownPackage (C8.pack d')
