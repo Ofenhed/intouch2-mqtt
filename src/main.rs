@@ -8,5 +8,6 @@ fn main() {
         NetworkPackage::Hello(x) => x,
         _ => panic!("invalid object"),
     };
+    println!("Hello {:?}", network_package::parser::parse_network_data(b"<PACKT><SRCCN>sender-id</SRCCN><DESCN>receiver-id</DESCN><DATAS>APING.</DATAS></PACKT>"));
     println!("Hello, world! {:?}", x);
 }
