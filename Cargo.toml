@@ -1,0 +1,8 @@
+[package]
+edition = "2018"
+name = "deconz-intouch2"
+version = "0.1.0"
+authors = ["Marcus Ofenhed <marcus@conditionraise.se>"]
+
+[dependencies]
+nom = "5.0.1"
