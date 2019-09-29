@@ -20,7 +20,7 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
   }
 }
 
-fn surrounded<'a>(before: &'a [u8], after: &'a [u8]) -> impl for<'r> Fn(&'r [u8]) -> IResult<&'r [u8], &'r [u8]> + 'a {
+fn surrounded<'a>(before: &'a [u8], after: &'a [u8]) -> impl 'a + for<'r> Fn(&'r [u8]) -> IResult<&'r [u8], &'r [u8]> {
   move |input| {
     let (input, _) = tag(before)(input)?;
     let (input, data) = take_until!(input, after)?;
