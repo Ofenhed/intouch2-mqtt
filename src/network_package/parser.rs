@@ -7,12 +7,8 @@ use nom::*;
 use nom::bytes::complete::*;
 
 fn surrounded<'a>(before: &'a [u8], after: &'a [u8]) -> impl 'a + for<'r> Fn(&'r [u8]) -> IResult<&'r [u8], &'r [u8]> {
-  move |input| {
-    let (input, _) = tag(before)(input)?;
-    let (input, data) = take_until!(input, after)?;
-    let (input, _) = tag(after)(input)?;
-    Ok((input, data))
-  }
+  move |input| 
+    do_parse!(input, tag!(before) >> data: take_until!(after) >> tag!(after) >> (data))
 }
 
 fn parse_hello_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
@@ -21,22 +17,23 @@ fn parse_hello_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
 }
 
 fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
-  match input {
-    b"APING" => Ok((b"", NetworkPackageData::Ping)),
-    b"APING." => Ok((b"", NetworkPackageData::Pong)),
+  let (input, datas) = surrounded(b"<DATAS>", b"</DATAS>")(input)?;
+  match datas {
+    b"APING" => Ok((input, NetworkPackageData::Ping)),
+    b"APING." => Ok((input, NetworkPackageData::Pong)),
     _ => Err(Err::Incomplete(Needed::Unknown)),
   }
 }
 
 fn parse_authorized_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
-  let (input, _) = tag(b"<PACKT>")(input)?;
-  let (input, src) = opt!(input, surrounded(b"<SRCCN>", b"</SRCCN>"))?;
-  let (input, dst) = opt!(input, surrounded(b"<DESCN>", b"</DESCN>"))?;
-  let (input, datas) = surrounded(b"<DATAS>", b"</DATAS>")(input)?;
-  let (unparsed, datas) = parse_datas(datas)?;
-  // eof!(unparsed)?;
-  let (input, _) = tag(b"</PACKT>")(input)?;
-  Ok((input, NetworkPackage::Authorized{src: src.map(|x| x.to_vec()), dst: dst.map(|x| x.to_vec()), data: datas}))
+  do_parse!(input,
+            tag!(b"<PACKT>") >>
+            src: opt!(surrounded(b"<SRCCN>", b"</SRCCN>")) >>
+            dst: opt!(surrounded(b"<DESCN>", b"</DESCN>")) >>
+            datas: parse_datas >>
+            tag!(b"</PACKT>") >>
+            (NetworkPackage::Authorized{src: src.map(|x| x.to_vec()), dst: dst.map(|x| x.to_vec()), data: datas}))
+
 }
 
 pub fn parse_network_data(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
