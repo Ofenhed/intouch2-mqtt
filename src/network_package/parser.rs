@@ -25,7 +25,7 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
   match datas {
     b"APING" => Ok((input, NetworkPackageData::Ping)),
     b"APING." => Ok((input, NetworkPackageData::Pong)),
-    _ => Err(Err::Incomplete(Needed::Unknown)),
+    x => Ok((input, NetworkPackageData::Unknown(x.to_vec())))
   }
 }
 
@@ -42,24 +42,4 @@ fn parse_authorized_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
 
 pub fn parse_network_data(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
   alt!(input, parse_hello_package | parse_authorized_package)
-}
-
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  const EMPTY:&[u8] = b"";
-
-  #[test]
-  fn parse_hello() {
-    assert_eq!(parse_network_data(b"<HELLO>1</HELLO>"), Ok((EMPTY, NetworkPackage::Hello(b"1".to_vec()))));
-  }
-
-  #[test]
-  fn parse_ping_and_pong() {
-    assert_eq!(parse_network_data(b"<PACKT><SRCCN>sender-id</SRCCN><DATAS>APING</DATAS></PACKT>"), Ok((EMPTY, NetworkPackage::Authorized{src: Some(b"sender-id".to_vec()), dst: None, data: NetworkPackageData::Ping})));
-    assert_eq!(parse_network_data(b"<PACKT><SRCCN>sender-id</SRCCN><DESCN>receiver-id</DESCN><DATAS>APING.</DATAS></PACKT>"), Ok((EMPTY, NetworkPackage::Authorized{src: Some(b"sender-id".to_vec()), dst: Some(b"receiver-id".to_vec()), data: NetworkPackageData::Pong})));
-  }
-
 }
