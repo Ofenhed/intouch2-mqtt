@@ -8,7 +8,11 @@ use nom::bytes::complete::*;
 
 fn surrounded<'a>(before: &'a [u8], after: &'a [u8]) -> impl 'a + for<'r> Fn(&'r [u8]) -> IResult<&'r [u8], &'r [u8]> {
   move |input| 
-    do_parse!(input, tag!(before) >> data: take_until!(after) >> tag!(after) >> (data))
+    do_parse!(input, 
+              tag!(before) >> 
+              data: take_until!(after) >> 
+              tag!(after) >> 
+              (data))
 }
 
 fn parse_hello_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
