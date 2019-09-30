@@ -6,9 +6,17 @@ use super::object::NetworkPackageData;
 use nom::*;
 use nom::bytes::complete::*;
 
+fn surrounded<'a>(before: &'a [u8], after: &'a [u8]) -> impl 'a + for<'r> Fn(&'r [u8]) -> IResult<&'r [u8], &'r [u8]> {
+  move |input| {
+    let (input, _) = tag(before)(input)?;
+    let (input, data) = take_until!(input, after)?;
+    let (input, _) = tag(after)(input)?;
+    Ok((input, data))
+  }
+}
+
 fn parse_hello_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
-  let (input, hello) = preceded!(input, tag(b"<HELLO>"), take_until!("</HELLO>"))?;
-  let (input, _) = tag(b"</HELLO>")(input)?;
+  let (input, hello) = surrounded(b"<HELLO>", b"</HELLO>")(input)?;
   Ok((input, NetworkPackage::Hello(hello.to_vec())))
 }
 
@@ -17,15 +25,6 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
     b"APING" => Ok((b"", NetworkPackageData::Ping)),
     b"APING." => Ok((b"", NetworkPackageData::Pong)),
     _ => Err(Err::Incomplete(Needed::Unknown)),
-  }
-}
-
-fn surrounded<'a>(before: &'a [u8], after: &'a [u8]) -> impl 'a + for<'r> Fn(&'r [u8]) -> IResult<&'r [u8], &'r [u8]> {
-  move |input| {
-    let (input, _) = tag(before)(input)?;
-    let (input, data) = take_until!(input, after)?;
-    let (input, _) = tag(after)(input)?;
-    Ok((input, data))
   }
 }
 
