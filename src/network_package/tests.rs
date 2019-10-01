@@ -27,6 +27,7 @@ fn id_packets() {
                      NetworkPackage::Authorized{src: Some(b"some-src".to_vec()), dst: None, data: NetworkPackageData::Ping},
                      NetworkPackage::Authorized{src: Some(b"some-src".to_vec()), dst: Some(b"some-dest".to_vec()), data: NetworkPackageData::Pong},
                      NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::GetVersion},
+                     NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::Version(b"some_version".to_vec())},
                     ];
   for pkg in packets.into_iter() {
     let composed = compose_network_data(&pkg);

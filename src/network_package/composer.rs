@@ -3,8 +3,9 @@ use super::object::*;
 fn compose_datas(input: &NetworkPackageData) -> Vec<u8> {
   match input {
     NetworkPackageData::Ping => b"APING".to_vec(),
-    NetworkPackageData::Pong => b"APING.".to_vec(),
+    NetworkPackageData::Pong => b"APING\0".to_vec(),
     NetworkPackageData::GetVersion => b"AVERSJ".to_vec(),
+    NetworkPackageData::Version(x) => [b"SVERS", x.as_slice()].concat(),
     _ => vec![],
   }
 }

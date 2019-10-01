@@ -7,6 +7,7 @@ pub enum NetworkPackageData {
     Ping,
     Pong,
     GetVersion,
+    Version(ByteString),
     Unknown(ByteString),
 }
 

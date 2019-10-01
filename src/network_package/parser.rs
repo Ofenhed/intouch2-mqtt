@@ -24,9 +24,10 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
   let (input, datas) = surrounded(b"<DATAS>", b"</DATAS>")(input)?;
   match datas {
     b"APING" => Ok((input, NetworkPackageData::Ping)),
-    b"APING." => Ok((input, NetworkPackageData::Pong)),
+    b"APING\0" => Ok((input, NetworkPackageData::Pong)),
     b"AVERSJ" => Ok((input, NetworkPackageData::GetVersion)),
-    x => Ok((input, NetworkPackageData::Unknown(x.to_vec())))
+    x => if let (b"SVERS", data) = x.split_at(5) { Ok((input, NetworkPackageData::Version(data.to_vec()))) }
+         else { Ok((input, NetworkPackageData::Unknown(x.to_vec()))) }
   }
 }
 
