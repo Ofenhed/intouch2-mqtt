@@ -6,3 +6,7 @@ authors = ["Marcus Ofenhed <marcus@conditionraise.se>"]
 
 [dependencies]
 nom = "5.0.1"
+palette = "0.4.1"
+rand = "0.7"
+hyper = "0.12"
+futures = "0.1"
