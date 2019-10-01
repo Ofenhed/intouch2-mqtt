@@ -1,6 +1,7 @@
 use super::*;
 use super::object::*;
 use super::parser::*;
+use super::composer::*;
 
 const EMPTY:&[u8] = b"";
 
@@ -19,4 +20,18 @@ fn parse_ping_and_pong() {
 fn parse_invalid_datas() {
   assert_eq!(parse_network_data(b"<PACKT><DATAS>APUNG</DATAS></PACKT>"), Ok((EMPTY, NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::Unknown(b"APUNG".to_vec())})))
 }
+
+#[test]
+fn id_packets() {
+  let packets = vec![NetworkPackage::Hello(b"My hello".to_vec()),
+                     NetworkPackage::Authorized{src: Some(b"some-src".to_vec()), dst: None, data: NetworkPackageData::Ping},
+                     NetworkPackage::Authorized{src: Some(b"some-src".to_vec()), dst: Some(b"some-dest".to_vec()), data: NetworkPackageData::Pong},
+                     NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::GetVersion},
+                    ];
+  for pkg in packets.into_iter() {
+    let composed = compose_network_data(&pkg);
+    assert_eq!(parse_network_data(composed.as_slice()), Ok((EMPTY, pkg)));
+  }
+}
+
 

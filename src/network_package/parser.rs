@@ -25,6 +25,7 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
   match datas {
     b"APING" => Ok((input, NetworkPackageData::Ping)),
     b"APING." => Ok((input, NetworkPackageData::Pong)),
+    b"AVERSJ" => Ok((input, NetworkPackageData::GetVersion)),
     x => Ok((input, NetworkPackageData::Unknown(x.to_vec())))
   }
 }

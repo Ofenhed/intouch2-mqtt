@@ -1,4 +1,6 @@
 pub mod object;
 pub mod parser;
+pub mod composer;
+
 #[cfg(test)]
-pub mod tests;
+mod tests;
