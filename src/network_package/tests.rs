@@ -13,7 +13,7 @@ fn parse_hello() {
 #[test]
 fn parse_ping_and_pong() {
   assert_eq!(parse_network_data(b"<PACKT><SRCCN>sender-id</SRCCN><DATAS>APING</DATAS></PACKT>"), Ok((EMPTY, NetworkPackage::Authorized{src: Some(b"sender-id".to_vec()), dst: None, data: NetworkPackageData::Ping})));
-  assert_eq!(parse_network_data(b"<PACKT><SRCCN>sender-id</SRCCN><DESCN>receiver-id</DESCN><DATAS>APING.</DATAS></PACKT>"), Ok((EMPTY, NetworkPackage::Authorized{src: Some(b"sender-id".to_vec()), dst: Some(b"receiver-id".to_vec()), data: NetworkPackageData::Pong})));
+  assert_eq!(parse_network_data(b"<PACKT><SRCCN>sender-id</SRCCN><DESCN>receiver-id</DESCN><DATAS>APING\0</DATAS></PACKT>"), Ok((EMPTY, NetworkPackage::Authorized{src: Some(b"sender-id".to_vec()), dst: Some(b"receiver-id".to_vec()), data: NetworkPackageData::Pong})));
 }
 
 #[test]
@@ -28,6 +28,8 @@ fn id_packets() {
                      NetworkPackage::Authorized{src: Some(b"some-src".to_vec()), dst: Some(b"some-dest".to_vec()), data: NetworkPackageData::Pong},
                      NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::GetVersion},
                      NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::Version(b"some_version".to_vec())},
+                     //NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::PushStatus(b"Some status".to_vec())},
+                     NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::PushStatusAck},
                     ];
   for pkg in packets.into_iter() {
     let composed = compose_network_data(&pkg);

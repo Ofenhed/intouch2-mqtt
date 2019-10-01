@@ -6,6 +6,8 @@ fn compose_datas(input: &NetworkPackageData) -> Vec<u8> {
     NetworkPackageData::Pong => b"APING\0".to_vec(),
     NetworkPackageData::GetVersion => b"AVERSJ".to_vec(),
     NetworkPackageData::Version(x) => [b"SVERS", x.as_slice()].concat(),
+    NetworkPackageData::PushStatus{raw_whole, status_type, data} => [b"STATP", raw_whole.as_slice()].concat(),
+    NetworkPackageData::PushStatusAck => b"STATQ\xe5".to_vec(),
     _ => vec![],
   }
 }
