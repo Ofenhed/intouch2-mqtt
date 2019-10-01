@@ -64,7 +64,7 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
                  _ => {},
                }
              }
-             let (intencity, max) = parsed.iter().fold((0, 0), |(sum, max), i| match i { Red(i) | Green(i) | Blue(i) => (sum + i, if i > &max { *i } else { max }), x => (sum, max)});
+             let (intencity, max): (u16, u8) = parsed.iter().fold((0, 0), |(sum, max), i| match i { Red(i) | Green(i) | Blue(i) => (sum + *i as u16, if i > &max { *i } else { max }), x => (sum, max)});
              let mul = intencity as f32 / max as f32;
              fn conv(x: f32) -> u8 {
                  let y = x as u8;

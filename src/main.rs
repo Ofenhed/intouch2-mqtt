@@ -1,7 +1,6 @@
 mod network_package;
 extern crate palette;
 extern crate rand;
-extern crate futures;
 
 use network_package::object::NetworkPackage;
 use network_package::object::NetworkPackageData;
@@ -14,10 +13,12 @@ use std::time::Duration;
 use std::time::Instant;
 use std::string::String;
 
-use palette::{Yxy,IntoColor,Srgb};
+use std::thread::spawn;
+use std::collections::HashMap;
 
-use hyper::{Client, Request, Body};
-use futures::{Future, Stream};
+use reqwest::Url;
+
+use palette::{Yxy,IntoColor,Srgb};
 
 use rand::*;
 
@@ -38,7 +39,7 @@ fn main() {
   let api_key = &args[3];
   let deconz_host = &args[2];
   let mut socket = UdpSocket::bind("0.0.0.0:0").expect("Couln't bind");
-  let client = Client::new();
+  let client = reqwest::Client::new();
   socket.connect(&args[1]);
   socket.send(compose_network_data(&NetworkPackage::Hello(b"1".to_vec())).as_slice());
   if let Ok(len) = socket.recv(& mut buf) {
@@ -66,12 +67,13 @@ fn main() {
                   if let Some((red, green, blue)) = get_status_rgb(&data) {
                     let xy = Yxy::from(Srgb::new(red as f32 / 256.0, green as f32 / 256.0, blue as f32 / 256.0).into_linear());
                     println!("Got red/green/blue {}/{}/{} or x/y {}/{} ({:?})", red, green, blue, xy.x, xy.y, &data);
-                    let req = Request::builder()
-                        .method("PUT")
-                        .uri(["http://", deconz_host, "/api/", api_key, "/groups/1/action"].concat())
-                        .body(Body::from(["{\"xy\":[", &xy.x.to_string(), ",", &xy.y.to_string(), "]}"].concat()))
-                        .expect("request builder");
-                    let rsp = client.request(req).and_then(|res| { println!("Got response {:?}", res); res.into_body().concat2()} );
+
+                    let mut map = HashMap::new();
+                    map.insert("xy", [&xy.x, &xy.y]);
+                    let mut resp = client.put(&["http://", deconz_host, "/api/", api_key, "/groups/1/action"].concat()).json(&map).send();
+                    if let Ok(resp) = &mut resp {
+                      println!("{:?}", resp.text());
+                    }
                   }
                   println!("Got status {:?} ({:?})", &raw_whole, &data);
                 },

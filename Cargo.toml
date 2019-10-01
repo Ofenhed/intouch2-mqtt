@@ -8,5 +8,4 @@ authors = ["Marcus Ofenhed <marcus@conditionraise.se>"]
 nom = "5.0.1"
 palette = "0.4.1"
 rand = "0.7"
-hyper = "0.12"
-futures = "0.1"
+reqwest = "0.9"
