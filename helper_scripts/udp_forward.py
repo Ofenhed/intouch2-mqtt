@@ -18,7 +18,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         data, (src_ip, src_port) = sock.recvfrom(4096)
         print(data, src_ip, src_port)
 
-        packet = IP(dst=destination_ip, src=src_ip)/UDP(dport=10022, sport=src_port)/Raw(load=data)
+        packet = IP(dst=destination_ip, src=src_ip)/UDP(dport=int(sys.argv[2]), sport=src_port)/Raw(load=data)
         packet = IP(raw(packet))
 
         send(packet)
