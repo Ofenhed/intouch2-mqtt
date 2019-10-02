@@ -44,28 +44,33 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
   let client = reqwest::Client::new();
   let api_url = ["http://", &deconz_host, "/api/", &api_key, "/"].concat();
   let group_number_valid = Duration::new(3600, 0);
-  let get_group_api = move || {
+  let get_group_apis = move || {
     let client = reqwest::Client::new();
     let mut response = client.get(&[&api_url, "groups"].concat()).send().unwrap();
     let groups = json::parse(&response.text().unwrap_or("{}".to_string())).unwrap();
-    for (key, group) in groups.entries() {
-      if group["name"].to_string() == group_name {
-        return Ok([&api_url, "groups/", key].concat())
-      }
+    let (light, dark) = groups.entries().fold((None, None), |(light, dark), (key, group)| { if group["name"].to_string() == group_name { (Some(key), dark) }
+                                                                                       else if group["name"].to_string() == dark_group_name { (light, Some(key)) }
+                                                                                       else { (light, dark) } });
+    println!("Found light groups {:?} and {:?}", light, dark);
+    match (light, dark) {
+      (Some(light), Some(dark)) => Ok(([&api_url, "groups/", light].concat(), [&api_url, "groups/", dark].concat())),
+      _ => Err("No such group found"),
     }
-    Err("No such group found")
   };
-  get_group_api().map(|group_api| {
+  get_group_apis().map(|(group_api, dark_group_api)| {
     let mut group_api_url = group_api;
+    let mut dark_group_api_url = dark_group_api;
     let mut group_fetched_at = Instant::now();
     move |push_values: &_| {
       if group_fetched_at + group_number_valid < Instant::now() {
-        if let Ok(new_group_api) = get_group_api() {
+        if let Ok((new_group_api, new_dark_group_api)) = get_group_apis() {
           group_api_url = new_group_api;
+          dark_group_api_url = new_dark_group_api;
           group_fetched_at = Instant::now();
         }
       }
       let mut request_object = None;
+      let mut dark_request_object = None;
       let mut prework = None;
       if let Some((red, green, blue)) = get_status_rgb(push_values) {
         let xy = Yxy::from(Srgb::new(red as f32 / std::u8::MAX as f32,
@@ -98,15 +103,26 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
         let map = object!{"effect" => if *x == Off { "none" } else { "colorloop" }, "colorloopspeed" => if *x == Slow {150} else {20}};
         merge_json_if_not_defined(&mut request_object, map);
       }
+      if let Some(PushStatusValue::Fountain(fountainOn)) = push_values.iter().find(|x| match x { PushStatusValue::Fountain(_) => true, _ => false }) {
+        dark_request_object = Some(object!{ "on" => *fountainOn == false });
+      }
       let current_group_api_url = group_api_url.clone();
+      let current_dark_group_api_url = dark_group_api_url.clone();
       spawn(move || {
         let client = reqwest::Client::new();
         prework.map(|x| x(&mut request_object));
+        println!("Objects are {:?} and {:?}", request_object, dark_request_object);
         if let Some(request_object) = request_object {
           println!("Sending command {}", &request_object.dump());
-          println!("Sending command {}", &request_object.dump());
           let response = client.put(&[&current_group_api_url, "/action"].concat()).body(request_object.dump()).send();
-          response.map(|mut x| println!("Response {}: {}", x.status(), x.text().unwrap_or("NO RESPONSE RECEIVER".to_string())));
+          println!("{:?}", response);
+          response.map(|mut x| println!("Response for matching light {}: {}", x.status(), x.text().unwrap_or("NO RESPONSE RECEIVER".to_string())));
+        };
+        if let Some(dark_request_object) = dark_request_object {
+          println!("Sending command {}", dark_request_object.dump());
+          let response = client.put(&[&current_dark_group_api_url, "/action"].concat()).body(dark_request_object.dump()).send();
+          println!("{:?}", response);
+          response.map(|mut x| println!("Response for dark light {}: {}", x.status(), x.text().unwrap_or("NO RESPONSE RECEIVER".to_string())));
         };
       });
     }
