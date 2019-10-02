@@ -3,8 +3,6 @@ extern crate nom;
 use super::object::*;
 
 use nom::*;
-use nom::error::*;
-use nom::bytes::complete::*;
 
 fn surrounded<'a>(before: &'a [u8], after: &'a [u8]) -> impl 'a + for<'r> Fn(&'r [u8]) -> IResult<&'r [u8], &'r [u8]> {
   move |input| 
@@ -28,6 +26,7 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
     b"APING\0" => Ok((input, NetworkPackageData::Pong)),
     b"AVERSJ" => Ok((input, NetworkPackageData::GetVersion)),
     b"STATQ\xe5" => Ok((input, NetworkPackageData::PushStatusAck)),
+    b"PACKS" => Ok((input, NetworkPackageData::Packs)),
     x => if let (b"SVERS", data) = x.split_at(5) { Ok((input, NetworkPackageData::Version(data.to_vec()))) }
          else if let (b"STATP", data) = x.split_at(5) {
            if data.len() > 1 {

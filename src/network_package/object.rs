@@ -15,6 +15,7 @@ pub enum PushStatusValue {
   Red(u8),
   Green(u8),
   Blue(u8),
+  LightIntencity(u8),
   LightOnTimer(u8),
 }
 
@@ -26,6 +27,7 @@ pub enum NetworkPackageData {
     Version(ByteString),
     PushStatus{ status_type: u8, data: Vec<PushStatusValue>, raw_whole: ByteString },
     PushStatusAck,
+    Packs,
     Unknown(ByteString),
 }
 
