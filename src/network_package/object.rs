@@ -15,6 +15,9 @@ pub enum PushStatusValue {
   Red(u8),
   Green(u8),
   Blue(u8),
+  SecondaryRed(u8),
+  SecondaryGreen(u8),
+  SecondaryBlue(u8),
   LightIntencity(u8),
   LightOnTimer(u8),
 }

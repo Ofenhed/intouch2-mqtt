@@ -47,6 +47,9 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
                        92 => parsed.push(Red(*parser.next().unwrap_or(&0))),
                        93 => parsed.push(Green(*parser.next().unwrap_or(&0))),
                        94 => parsed.push(Blue(*parser.next().unwrap_or(&0))),
+                       99 => parsed.push(SecondaryRed(*parser.next().unwrap_or(&0))),
+                       100=> parsed.push(SecondaryGreen(*parser.next().unwrap_or(&0))),
+                       101=> parsed.push(SecondaryBlue(*parser.next().unwrap_or(&0))),
                        _ => { parser.next(); },
                      }
                    }
