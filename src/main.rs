@@ -32,7 +32,9 @@ fn make_deconz(deconz_host: String, api_key: String) -> impl Fn(&[PushStatusValu
   let client = reqwest::Client::new();
   move |push_values| {
     if let Some((red, green, blue)) = get_status_rgb(&push_values) {
-      let xy = Yxy::from(Srgb::new(red as f32 / 255.0, green as f32 / 255.0, blue as f32 / 255.0).into_linear());
+      let xy = Yxy::from(Srgb::new(red as f32 / std::u8::MAX as f32,
+                                   green as f32 / std::u8::MAX as f32,
+                                   blue as f32 / std::u8::MAX as f32).into_linear());
       println!("Got red/green/blue {}/{}/{} or x/y {}/{} ({:?})", red, green, blue, xy.x, xy.y, &push_values);
 
       let mut map = HashMap::new();
