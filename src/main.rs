@@ -29,6 +29,17 @@ fn generate_uuid() -> Vec<u8> {
   [b"IOS", &hexed[0..8], b"-", &hexed[8..12], b"-", &hexed[12..16], b"-", &hexed[16..24], b"-", &hexed[24..32]].concat()
 }
 
+fn merge_json_if_not_defined(target: &mut Option<json::JsonValue>, extra: json::JsonValue) {
+  match target {
+    Some(target) => {
+      for (key, group) in extra.entries() {
+        target[key] = group.clone();
+      }
+    },
+    _ => { *target = Some(extra); }
+  }
+}
+
 fn make_deconz(deconz_host: String, api_key: String, group_name: String) -> Result<impl FnMut(&[PushStatusValue]) -> (), &'static str> {
   let client = reqwest::Client::new();
   let api_url = ["http://", &deconz_host, "/api/", &api_key, "/"].concat();
@@ -54,6 +65,8 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String) -> Resu
           group_fetched_at = Instant::now();
         }
       }
+      let mut request_object = None;
+      let mut prework = None;
       if let Some((red, green, blue)) = get_status_rgb(push_values) {
         let xy = Yxy::from(Srgb::new(red as f32 / std::u8::MAX as f32,
                                      green as f32 / std::u8::MAX as f32,
@@ -65,36 +78,37 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String) -> Resu
             "bri" => *li,
           }
         } else { object!{"xy" => array![xy.x, xy.y]} };
-
-        let mut request = client.put(&[&group_api_url, "/action"].concat()).body(map.dump());
-        spawn(move || { if let Ok(resp) = &mut request.send() {
-          println!("{:?}", resp.text());
-        }; });
+        merge_json_if_not_defined(&mut request_object, map);
       }
       if let Some(PushStatusValue::LightOnTimer(x)) = push_values.iter().find(|x| match x { PushStatusValue::LightOnTimer(_) => true, _ => false }) {
         let map = object!{"on" => *x != 0};
         let mut request_query = client.get(&group_api_url);
-        let mut request_action = client.put(&[&group_api_url, "/action"].concat()).body(map.dump());
         let should_be_on = *x != 0;
         
-        spawn(move || if let Ok(resp) = &mut request_query.send() {
+        prework = Some(move |mut other_object: &mut _| if let Ok(resp) = &mut request_query.send() {
           let status = json::parse(&resp.text().unwrap_or("{}".to_string())).unwrap();
           if status["action"]["on"] != should_be_on {
-            let client = reqwest::Client::new();
-            if let Ok(resp) = &mut request_action.send() {
-              println!("{:?}", resp.text());
-            };
+              println!("Including on/off command");
+              merge_json_if_not_defined(&mut other_object, map);
           };
         });
       }
       if let Some(PushStatusValue::FadeColors(x)) = push_values.iter().find(|x| match x { PushStatusValue::FadeColors(_) => true, _ => false }) {
         use network_package::object::StatusFadeColors::*;
         let map = object!{"effect" => if *x == Off { "none" } else { "colorloop" }, "colorloopspeed" => if *x == Slow {150} else {20}};
-        let mut request = client.put(&[&group_api_url, "/action"].concat()).body(map.dump());
-        spawn(move || { if let Ok(resp) = &mut request.send() {
-          println!("{:?}", resp.text());
-        }; });
-      };
+        merge_json_if_not_defined(&mut request_object, map);
+      }
+      let current_group_api_url = group_api_url.clone();
+      spawn(move || {
+        let client = reqwest::Client::new();
+        prework.map(|x| x(&mut request_object));
+        if let Some(request_object) = request_object {
+          println!("Sending command {}", &request_object.dump());
+          println!("Sending command {}", &request_object.dump());
+          let response = client.put(&[&current_group_api_url, "/action"].concat()).body(request_object.dump()).send();
+          response.map(|mut x| println!("Response {}: {}", x.status(), x.text().unwrap_or("NO RESPONSE RECEIVER".to_string())));
+        };
+      });
     }
   })
 }
