@@ -21,6 +21,8 @@ use palette::{Yxy,Srgb};
 
 use rand::*;
 
+use json::{object,array};
+
 fn generate_uuid() -> Vec<u8> {
   let mut rng = rand::thread_rng();
   let characters = b"0123456789abcdef".to_vec();
@@ -36,14 +38,42 @@ fn make_deconz(deconz_host: String, api_key: String) -> impl Fn(&[PushStatusValu
                                    green as f32 / std::u8::MAX as f32,
                                    blue as f32 / std::u8::MAX as f32).into_linear());
       println!("Got red/green/blue {}/{}/{} or x/y {}/{} ({:?})", red, green, blue, xy.x, xy.y, &push_values);
+      let map = if let Some(PushStatusValue::LightIntencity(li)) = push_values.iter().find(|x| match x { PushStatusValue::LightIntencity(_) => true, _ => false }) {
+        object!{
+          "xy" => array![xy.x, xy.y],
+          "bri" => *li,
+        }
+      } else { object!{"xy" => array![xy.x, xy.y]} };
 
-      let mut map = HashMap::new();
-      map.insert("xy", [&xy.x, &xy.y]);
-      let mut request = client.put(&["http://", &deconz_host, "/api/", &api_key, "/groups/1/action"].concat()).json(&map);
+      let mut request = client.put(&["http://", &deconz_host, "/api/", &api_key, "/groups/1/action"].concat()).body(map.dump());
       spawn(move || { if let Ok(resp) = &mut request.send() {
         println!("{:?}", resp.text());
       }; });
-    };
+    }
+    if let Some(PushStatusValue::LightOnTimer(x)) = push_values.iter().find(|x| match x { PushStatusValue::LightOnTimer(_) => true, _ => false }) {
+      let map = object!{"on" => *x != 0};
+      let mut request_query = client.get(&["http://", &deconz_host, "/api/", &api_key, "/groups/1"].concat());
+      let mut request_action = client.put(&["http://", &deconz_host, "/api/", &api_key, "/groups/1/action"].concat()).body(map.dump());
+      let should_be_on = *x != 0;
+      
+      spawn(move || if let Ok(resp) = &mut request_query.send() {
+        let status = json::parse(&resp.text().unwrap_or("{}".to_string())).unwrap();
+        if status["action"]["on"] != should_be_on {
+          let client = reqwest::Client::new();
+          if let Ok(resp) = &mut request_action.send() {
+            println!("{:?}", resp.text());
+          };
+        };
+      });
+    }
+    if let Some(PushStatusValue::FadeColors(x)) = push_values.iter().find(|x| match x { PushStatusValue::FadeColors(_) => true, _ => false }) {
+      use network_package::object::StatusFadeColors::*;
+      let map = object!{"effect" => if *x == Off { "none" } else { "colorloop" }, "colorloopspeed" => if *x == Slow {150} else {20}};
+      let mut request = client.put(&["http://", &deconz_host, "/api/", &api_key, "/groups/1/action"].concat()).body(map.dump());
+      spawn(move || { if let Ok(resp) = &mut request.send() {
+        println!("{:?}", resp.text());
+      }; });
+    }
   }
 }
 

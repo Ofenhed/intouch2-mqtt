@@ -69,7 +69,7 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
                  let y = x as u8;
                  y
              }
-             parsed.push(LightIntencity(std::cmp::max(std::u8::MAX as u16, intencity) as u8));
+             parsed.push(LightIntencity(max));
              let parsed = parsed.into_iter().map(|x| match x { Red(i)   => Red(  conv(i as f32 * mul)),
                                                                Green(i) => Green(conv(i as f32 * mul)),
                                                                Blue(i)  => Blue( conv(i as f32 * mul)),
