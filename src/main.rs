@@ -38,7 +38,6 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String) -> Resu
     let mut response = client.get(&[&api_url, "groups"].concat()).send().unwrap();
     let groups = json::parse(&response.text().unwrap_or("{}".to_string())).unwrap();
     for (key, group) in groups.entries() {
-      println!("{}, {}, {:?}", key, group["name"], group);
       if group["name"].to_string() == group_name {
         return Ok([&api_url, "groups/", key].concat())
       }
@@ -53,7 +52,6 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String) -> Resu
         if let Ok(new_group_api) = get_group_api() {
           group_api_url = new_group_api;
           group_fetched_at = Instant::now();
-          println!("Fetched new group number");
         }
       }
       if let Some((red, green, blue)) = get_status_rgb(push_values) {
