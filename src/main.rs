@@ -40,7 +40,7 @@ fn merge_json_if_not_defined(target: &mut Option<json::JsonValue>, extra: json::
   }
 }
 
-fn make_deconz(deconz_host: String, api_key: String, group_name: String) -> Result<impl FnMut(&[PushStatusValue]) -> (), &'static str> {
+fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_group_name: String) -> Result<impl FnMut(&[PushStatusValue]) -> (), &'static str> {
   let client = reqwest::Client::new();
   let api_url = ["http://", &deconz_host, "/api/", &api_key, "/"].concat();
   let group_number_valid = Duration::new(3600, 0);
@@ -116,15 +116,16 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String) -> Resu
 fn main() {
   let mut buf = [0; 4096];
   let mut args: Vec<_> = args().collect();
-  if args.len() != 5 {
-    println!("Usage: {} spa-target deconz-target deconz-api-key deconz-group-name", args[0]);
+  if args.len() != 6 {
+    println!("Usage: {} spa-target deconz-target deconz-api-key deconz-matched-group-name deconz-dark-group-name", args[0]);
     return;
   }
   let mut socket = UdpSocket::bind("0.0.0.0:0").expect("Couln't bind");
+  let deconz_dark_group_name = args.remove(5);
   let deconz_group_name = args.remove(4);
   let api_key = args.remove(3);
   let deconz_host = args.remove(2);
-  let mut deconz_client = make_deconz(deconz_host, api_key, deconz_group_name).unwrap();
+  let mut deconz_client = make_deconz(deconz_host, api_key, deconz_group_name, deconz_dark_group_name).unwrap();
   socket.connect(&args[1]);
   socket.send(compose_network_data(&NetworkPackage::Hello(b"1".to_vec())).as_slice());
   if let Ok(len) = socket.recv(& mut buf) {

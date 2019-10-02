@@ -20,6 +20,7 @@ pub enum PushStatusValue {
   SecondaryBlue(u8),
   LightIntencity(u8),
   LightOnTimer(u8),
+  Fountain(bool),
 }
 
 #[derive(Eq,Debug,PartialEq)]

@@ -58,21 +58,25 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
                    if let Some(field_type) = parser.next() {
                      match field_type {
                        49 => parsed.push(LightOnTimer(*parser.next().unwrap_or(&0))),
+                       107=> parsed.push(Fountain(*parser.next().unwrap_or(&0) != 0)),
+                       106=> { parser.next() ; parser.next(); }, // Don't know what this is, but it takes two bytes.
                        _ => { parser.next(); },
                      }
                    }
                  },
                  0 | 214 => {},
-                 _ => {},
+                 _ => {parser.next();},
                }
              }
-             let (intencity, max): (u16, u8) = parsed.iter().fold((0, 0), |(sum, max), i| match i { Red(i) | Green(i) | Blue(i) => (sum + *i as u16, if i > &max { *i } else { max }), x => (sum, max)});
+             let (intencity, max, has_colors): (u16, u8, bool) = parsed.iter().fold((0, 0, false), |(sum, max, has_colors), i| match i { Red(i) | Green(i) | Blue(i) => (sum + *i as u16, if i > &max { *i } else { max }, true), x => (sum, max, has_colors)});
              let mul = intencity as f32 / max as f32;
              fn conv(x: f32) -> u8 {
                  let y = x as u8;
                  y
              }
-             parsed.push(LightIntencity(std::cmp::min(std::u8::MAX, intencity as u8)));
+             if has_colors {
+               parsed.push(LightIntencity(std::cmp::min(std::u8::MAX, intencity as u8)));
+             }
              let parsed = parsed.into_iter().map(|x| match x { Red(i)   => Red(  conv(i as f32 * mul)),
                                                                Green(i) => Green(conv(i as f32 * mul)),
                                                                Blue(i)  => Blue( conv(i as f32 * mul)),
