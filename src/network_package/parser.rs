@@ -4,6 +4,8 @@ use super::object::*;
 
 use nom::*;
 
+use std::collections::HashMap;
+
 fn surrounded<'a>(before: &'a [u8], after: &'a [u8]) -> impl 'a + for<'r> Fn(&'r [u8]) -> IResult<&'r [u8], &'r [u8]> {
   move |input| 
     do_parse!(input, 
@@ -18,6 +20,22 @@ fn parse_hello_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
   Ok((input, NetworkPackage::Hello(hello.to_vec())))
 }
 
+fn parse_pushed_package(input: &[u8]) -> Option<HashMap<u8, (u8, Vec<u8>)>> {
+  let mut iter = input.iter();
+  let count = iter.next()?;
+  let mut ret = HashMap::new();
+  for i in 0..*count {
+    let pkg_type = iter.next()?;
+    let group = iter.next()?;
+    let mut members = vec![];
+    for i in 0..2 {
+      let curr = iter.next()?;
+      members.push(*curr);
+    }
+    ret.insert(*group, (*pkg_type, members));
+  };
+  Some(ret)
+}
 
 fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
   let (input, datas) = surrounded(b"<DATAS>", b"</DATAS>")(input)?;
@@ -29,59 +47,54 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
     b"PACKS" => Ok((input, NetworkPackageData::Packs)),
     x => if let (b"SVERS", data) = x.split_at(5) { Ok((input, NetworkPackageData::Version(data.to_vec()))) }
          else if let (b"STATP", data) = x.split_at(5) {
-           if data.len() > 1 {
-             use PushStatusValue::*;
-             let msg_type = data[0];
-             let mut parser = data.iter();
-             parser.next(); // skip header
-             let mut parsed = vec![];
-             while let Some(sub_msg_type) = parser.next() {
-               match sub_msg_type {
-                 2 => { 
-                   if let Some(field_type) = parser.next() {
+           if let Some(partitioned) = parse_pushed_package(data) {
+             if partitioned.len() > 1 {
+               use PushStatusValue::*;
+               let mut parsed = vec![];
+               for (field_type, (sub_msg_type, value)) in &partitioned {
+                 match sub_msg_type {
+                   2 => { 
                      match field_type {
-                       89 => match *parser.next().unwrap_or(&0) { 1 => parsed.push(FadeColors(StatusFadeColors::Slow)),
-                                                                  2 => parsed.push(FadeColors(StatusFadeColors::Quick)),
-                                                                  5 => parsed.push(FadeColors(StatusFadeColors::Off)),
-                                                                  _ => {}},
-                       92 => parsed.push(Red(*parser.next().unwrap_or(&0))),
-                       93 => parsed.push(Green(*parser.next().unwrap_or(&0))),
-                       94 => parsed.push(Blue(*parser.next().unwrap_or(&0))),
-                       99 => parsed.push(SecondaryRed(*parser.next().unwrap_or(&0))),
-                       100=> parsed.push(SecondaryGreen(*parser.next().unwrap_or(&0))),
-                       101=> parsed.push(SecondaryBlue(*parser.next().unwrap_or(&0))),
-                       _ => { parser.next(); },
+                       89 => match value[0] { 1 => parsed.push(FadeColors(StatusFadeColors::Slow)),
+                                              2 => parsed.push(FadeColors(StatusFadeColors::Quick)),
+                                              5 => parsed.push(FadeColors(StatusFadeColors::Off)),
+                                              _ => {}},
+                       92 => parsed.push(Red(value[0])),
+                       93 => parsed.push(Green(value[0])),
+                       94 => parsed.push(Blue(value[0])),
+                       99 => parsed.push(SecondaryRed(value[0])),
+                       100=> parsed.push(SecondaryGreen(value[0])),
+                       101=> parsed.push(SecondaryBlue(value[0])),
+                       _  => {},
                      }
-                   }
-                 },
-                 1 => {
-                   if let Some(field_type) = parser.next() {
+                   },
+                   1 => {
                      match field_type {
-                       49 => parsed.push(LightOnTimer(*parser.next().unwrap_or(&0))),
-                       107=> parsed.push(Fountain(*parser.next().unwrap_or(&0) != 0)),
-                       106=> { parser.next() ; parser.next(); }, // Don't know what this is, but it takes two bytes.
-                       _ => { parser.next(); },
+                       49 => parsed.push(LightOnTimer(value[0])),
+                       107=> parsed.push(Fountain(value[0] != 0)),
+                       _ => {},
                      }
-                   }
-                 },
-                 0 | 214 => {},
-                 _ => {parser.next();},
+                   },
+                   _ => {},
+                 }
                }
+               let (intencity, max, has_colors): (u16, u8, bool) = parsed.iter().fold((0, 0, false), |(sum, max, has_colors), i| match i { Red(i) | Green(i) | Blue(i) => (sum + *i as u16, if i > &max { *i } else { max }, true), x => (sum, max, has_colors)});
+               let mul = intencity as f32 / max as f32;
+               fn conv(x: f32) -> u8 {
+                   let y = x as u8;
+                   y
+               }
+               if has_colors {
+                 parsed.push(LightIntencity(std::cmp::min(std::u8::MAX, intencity as u8)));
+               }
+               let parsed = parsed.into_iter().map(|x| match x { Red(i)   => Red(  conv(i as f32 * mul)),
+                                                                 Green(i) => Green(conv(i as f32 * mul)),
+                                                                 Blue(i)  => Blue( conv(i as f32 * mul)),
+                                                                 x => x, });
+               Ok((input, NetworkPackageData::PushStatus{status_type: data[0], data: parsed.collect(), raw_whole: data.to_vec()}))
+             } else {
+               Ok((input, NetworkPackageData::PushStatus{status_type: data[0], data: vec![], raw_whole: data.to_vec()}))
              }
-             let (intencity, max, has_colors): (u16, u8, bool) = parsed.iter().fold((0, 0, false), |(sum, max, has_colors), i| match i { Red(i) | Green(i) | Blue(i) => (sum + *i as u16, if i > &max { *i } else { max }, true), x => (sum, max, has_colors)});
-             let mul = intencity as f32 / max as f32;
-             fn conv(x: f32) -> u8 {
-                 let y = x as u8;
-                 y
-             }
-             if has_colors {
-               parsed.push(LightIntencity(std::cmp::min(std::u8::MAX, intencity as u8)));
-             }
-             let parsed = parsed.into_iter().map(|x| match x { Red(i)   => Red(  conv(i as f32 * mul)),
-                                                               Green(i) => Green(conv(i as f32 * mul)),
-                                                               Blue(i)  => Blue( conv(i as f32 * mul)),
-                                                               x => x, });
-             Ok((input, NetworkPackageData::PushStatus{status_type: data[0], data: parsed.collect(), raw_whole: data.to_vec()}))
            } else {
              Ok((input, NetworkPackageData::PushStatus{status_type: data[0], data: vec![], raw_whole: data.to_vec()}))
            }
