@@ -1,27 +1,54 @@
 #![allow(unused_variables)]
 
+use num_traits::FromPrimitive;
+use num_derive::ToPrimitive;
+use num_traits::ToPrimitive;
+use std::cmp::Ordering;
+
 type ByteString = Vec<u8>;
 
-#[derive(Eq,Debug,PartialEq)]
+#[derive(Eq,Debug,PartialEq,FromPrimitive)]
 pub enum StatusFadeColors {
-  Slow,
-  Quick,
-  Off,
+  Slow = 1,
+  Quick = 2,
+  Off = 5,
 }
 
-#[derive(Eq,Debug,PartialEq)]
-pub enum PushStatusValue {
-  FadeColors(StatusFadeColors),
-  Red(u8),
-  Green(u8),
-  Blue(u8),
-  SecondaryRed(u8),
-  SecondaryGreen(u8),
-  SecondaryBlue(u8),
-  LightIntencity(u8),
-  LightOnTimer(u8),
-  Fountain(bool),
+pub type PushStatusValue = (u8, u8);
+
+const fn key(v1: u8, v2: u8) -> isize {
+  (((v1 as u16) << 8) + v2 as u16) as isize
 }
+
+pub fn to_push_status_index(v1: u8, v2: u8) -> isize {
+  key(v1, v2)
+}
+
+pub fn from_push_status_index(v: isize) -> (u8, u8) {
+  ((v >> 8) as u8, v as u8)
+}
+
+#[derive(Eq,Debug,PartialEq,FromPrimitive,ToPrimitive,Hash,Copy,Clone)]
+pub enum PushStatusIndex {
+  FadeColors = key(2, 89),
+  Red = key(2, 92),
+  Green = key(2, 93),
+  Blue = key(2, 94),
+  SecondaryRed = key(2, 99),
+  SecondaryGreen = key(2, 100),
+  SecondaryBlue = key(2, 101),
+  LightOnTimer = key(1, 49),
+  Fountain = key(1, 107),
+}
+
+#[derive(Debug,Hash,Eq,PartialEq,Copy,Clone)]
+pub enum PushStatusKey {
+  Keyed(PushStatusIndex),
+  Indexed(u8, u8),
+}
+
+pub type PushStatusList = ::std::collections::HashMap<PushStatusKey, PushStatusValue>;
+
 
 #[derive(Eq,Debug,PartialEq)]
 pub enum NetworkPackageData {
@@ -29,7 +56,8 @@ pub enum NetworkPackageData {
     Pong,
     GetVersion,
     Version(ByteString),
-    PushStatus{ status_type: u8, data: Vec<PushStatusValue>, raw_whole: ByteString },
+    PushStatus(PushStatusList),
+    UnparsablePushStatus(ByteString),
     PushStatusAck,
     Packs,
     Unknown(ByteString),
@@ -39,4 +67,24 @@ pub enum NetworkPackageData {
 pub enum NetworkPackage {
     Authorized{src: Option<ByteString>, dst: Option<ByteString>, data: NetworkPackageData},
     Hello(ByteString),
+}
+
+impl Ord for PushStatusKey {
+  fn cmp(&self, other: &Self) -> Ordering {
+    let first = match self {
+      PushStatusKey::Indexed(x, y) => (*x, *y),
+      PushStatusKey::Keyed(x) => from_push_status_index(ToPrimitive::to_isize(x).unwrap())
+    };
+    let second = match other {
+      PushStatusKey::Indexed(x, y) => (*x, *y),
+      PushStatusKey::Keyed(x) => from_push_status_index(ToPrimitive::to_isize(x).unwrap())
+    };
+    first.cmp(&second)
+  }
+}
+
+impl PartialOrd for PushStatusKey {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(&other))
+  }
 }

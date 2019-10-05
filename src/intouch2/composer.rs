@@ -1,12 +1,34 @@
 use super::object::*;
 
+use num_derive::ToPrimitive;
+use num_traits::ToPrimitive;
+
+fn compose_push_status(x: &PushStatusList) -> Vec<u8> {
+  let mut res = vec![x.len() as u8];
+  let mut keys: Vec<_> = x.keys().collect();
+  keys.sort();
+  for key in keys {
+    let (p1, p2) = match key {
+      PushStatusKey::Keyed(index) => from_push_status_index(ToPrimitive::to_isize(index).unwrap()),
+      PushStatusKey::Indexed(i1, i2) => (*i1, *i2),
+    };
+    res.push(p1);
+    res.push(p2);
+    let (d1, d2) = x.get(key).unwrap();
+    res.push(*d1);
+    res.push(*d2);
+  }
+  res
+}
+
 fn compose_datas(input: &NetworkPackageData) -> Vec<u8> {
   match input {
     NetworkPackageData::Ping => b"APING".to_vec(),
     NetworkPackageData::Pong => b"APING\0".to_vec(),
     NetworkPackageData::GetVersion => b"AVERSJ".to_vec(),
     NetworkPackageData::Version(x) => [b"SVERS", x.as_slice()].concat(),
-    NetworkPackageData::PushStatus{raw_whole, status_type, data} => [b"STATP", raw_whole.as_slice()].concat(),
+    NetworkPackageData::PushStatus(datas) => [b"STATP", compose_push_status(datas).as_slice()].concat(),
+    NetworkPackageData::UnparsablePushStatus(raw_whole) => [b"STATP", raw_whole.as_slice()].concat(),
     NetworkPackageData::PushStatusAck => b"STATQ\xe5".to_vec(),
     NetworkPackageData::Packs => b"PACKS".to_vec(),
     _ => vec![],

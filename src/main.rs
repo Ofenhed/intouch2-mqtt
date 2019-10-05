@@ -1,10 +1,11 @@
+#[macro_use]
+extern crate num_derive;
+
 mod intouch2;
 extern crate palette;
 extern crate rand;
 
-use intouch2::object::NetworkPackage;
-use intouch2::object::NetworkPackageData;
-use intouch2::object::PushStatusValue;
+use intouch2::object::*;
 use intouch2::parser::*;
 use intouch2::composer::*;
 
@@ -21,6 +22,9 @@ use palette::{Yxy,Srgb};
 use rand::*;
 
 use json::{object,array};
+
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 
 fn generate_uuid() -> Vec<u8> {
   let mut rng = rand::thread_rng();
@@ -40,7 +44,8 @@ fn merge_json_if_not_defined(target: &mut Option<json::JsonValue>, extra: json::
   }
 }
 
-fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_group_name: String) -> Result<impl FnMut(&[PushStatusValue]) -> (), &'static str> {
+fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_group_name: String) -> Result<impl FnMut(&PushStatusList) -> (), &'static str> {
+  use PushStatusKey::Keyed;
   let client = reqwest::Client::new();
   let api_url = ["http://", &deconz_host, "/api/", &api_key, "/"].concat();
   let group_number_valid = Duration::new(3600, 0);
@@ -72,20 +77,18 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
       let mut request_object = None;
       let mut dark_request_object = None;
       let mut prework = None;
-      if let Some((red, green, blue)) = get_status_rgb(push_values) {
+      if let (Some((red, green, blue, intencity)), _) = get_status_rgba(push_values) {
         let xy = Yxy::from(Srgb::new(red as f32 / std::u8::MAX as f32,
                                      green as f32 / std::u8::MAX as f32,
                                      blue as f32 / std::u8::MAX as f32).into_linear());
         println!("Got red/green/blue {}/{}/{} or x/y {}/{} ({:?})", red, green, blue, xy.x, xy.y, push_values);
-        let map = if let Some(PushStatusValue::LightIntencity(li)) = push_values.iter().find(|x| match x { PushStatusValue::LightIntencity(_) => true, _ => false }) {
-          object!{
-            "xy" => array![xy.x, xy.y],
-            "bri" => *li,
-          }
-        } else { object!{"xy" => array![xy.x, xy.y]} };
+        let map = object!{
+          "xy" => array![xy.x, xy.y],
+          "bri" => intencity as f32 / std::u8::MAX as f32,
+        };
         merge_json_if_not_defined(&mut request_object, map);
       }
-      if let Some(PushStatusValue::LightOnTimer(x)) = push_values.iter().find(|x| match x { PushStatusValue::LightOnTimer(_) => true, _ => false }) {
+      if let Some((x, _)) = push_values.get(&Keyed(PushStatusIndex::LightOnTimer)) {
         let map = object!{"on" => *x != 0};
         let mut request_query = client.get(&group_api_url);
         let should_be_on = *x != 0;
@@ -98,13 +101,15 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
           };
         });
       }
-      if let Some(PushStatusValue::FadeColors(x)) = push_values.iter().find(|x| match x { PushStatusValue::FadeColors(_) => true, _ => false }) {
+      if let Some((x, _)) = push_values.get(&Keyed(PushStatusIndex::FadeColors)) {
         use intouch2::object::StatusFadeColors::*;
-        let map = object!{"effect" => if *x == Off { "none" } else { "colorloop" }, "colorloopspeed" => if *x == Slow {150} else {20}};
-        merge_json_if_not_defined(&mut request_object, map);
+        if let Some(fading) = FromPrimitive::from_u8(*x) as Option<StatusFadeColors> {
+          let map = object!{"effect" => if fading == Off { "none" } else { "colorloop" }, "colorloopspeed" => if fading == Slow {150} else {20}};
+          merge_json_if_not_defined(&mut request_object, map);
+        }
       }
-      if let Some(PushStatusValue::Fountain(fountainOn)) = push_values.iter().find(|x| match x { PushStatusValue::Fountain(_) => true, _ => false }) {
-        dark_request_object = Some(object!{ "on" => *fountainOn == false });
+      if let Some((fountainOn, _)) = push_values.get(&Keyed(PushStatusIndex::Fountain)) {
+        dark_request_object = Some(object!{ "on" => *fountainOn == 0 });
       }
       let current_group_api_url = group_api_url.clone();
       let current_dark_group_api_url = dark_group_api_url.clone();
@@ -164,10 +169,9 @@ fn main() {
             if let Ok(len) = socket.recv(&mut buf) {
               match parse_network_data(&buf[0..len]) {
                 Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Pong})) => {},
-                Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::PushStatus{status_type, data, raw_whole}})) => { 
+                Ok(([], NetworkPackage::Authorized{src: x, dst: y, data: NetworkPackageData::PushStatus(data)})) => { 
                   socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice());
                   deconz_client(&data);
-                  println!("Got status {:?} ({:?})", &raw_whole, &data);
                 },
                 Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Packs})) => { socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice()); }
                 Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Unknown(x)})) => { println!("Got payload \"{}\" {:?}", String::from_utf8_lossy(x.as_slice()), &x); },
