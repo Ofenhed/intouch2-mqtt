@@ -84,7 +84,7 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
         println!("Got red/green/blue {}/{}/{} or x/y {}/{} ({:?})", red, green, blue, xy.x, xy.y, push_values);
         let map = object!{
           "xy" => array![xy.x, xy.y],
-          "bri" => intencity as f32 / std::u8::MAX as f32,
+          "bri" => intencity,
         };
         merge_json_if_not_defined(&mut request_object, map);
       }
@@ -96,7 +96,6 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
         prework = Some(move |mut other_object: &mut _| if let Ok(resp) = &mut request_query.send() {
           let status = json::parse(&resp.text().unwrap_or("{}".to_string())).unwrap();
           if status["action"]["on"] != should_be_on {
-              println!("Including on/off command");
               merge_json_if_not_defined(&mut other_object, map);
           };
         });
@@ -151,12 +150,17 @@ fn main() {
   socket.send(compose_network_data(&NetworkPackage::Hello(b"1".to_vec())).as_slice());
   if let Ok(len) = socket.recv(& mut buf) {
     if let Ok(([], NetworkPackage::Hello(receiver))) = parse_network_data(&buf[0..len]) {
+      let (receiver, name) = {
+        let pos = receiver.iter().position(|x| *x == '|' as u8).unwrap_or(receiver.len());
+        let (before, after) = (&receiver[0..pos], &receiver[pos+1..]);
+        (before.to_vec(), after)
+      };
       let key = generate_uuid();
       socket.send(compose_network_data(&NetworkPackage::Hello(key.clone())).as_slice());
       socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::GetVersion}).as_slice());
       if let Ok(len) = socket.recv(& mut buf) {
         if let Ok(([], NetworkPackage::Authorized{src, dst, data: NetworkPackageData::Version(x)})) = parse_network_data(&buf[0..len]) {
-          println!("Got version {:?}", x);
+          println!("Connected to {}, got version {:?}", String::from_utf8_lossy(name), x);
           socket.set_read_timeout(Some(Duration::new(0, 100000)));
           let ping_timeout = Duration::new(3, 0);
           let mut last_ping = Instant::now();
@@ -172,10 +176,21 @@ fn main() {
                 Ok(([], NetworkPackage::Authorized{src: x, dst: y, data: NetworkPackageData::PushStatus(data)})) => { 
                   socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice());
                   deconz_client(&data);
+                  #[cfg(debug_assertions)] {
+                    println!("Got status {:?}", &data);
+                    let recomposed = compose_network_data(&NetworkPackage::Authorized{src: x, dst: y, data: NetworkPackageData::PushStatus(data.clone())});
+                    if recomposed == buf[0..len].to_vec() {
+                      println!("Same recomposed");
+                    } else {
+                      println!("Recomposed differ!");
+                      println!("{:?}", &buf[0..len]);
+                      println!("{:?}", recomposed);
+                    }
+                  }
                 },
                 Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Packs})) => { socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice()); }
-                Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Unknown(x)})) => { println!("Got payload \"{}\" {:?}", String::from_utf8_lossy(x.as_slice()), &x); },
-                _ => println!("Unknown error, I guess"),
+                Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Unknown(x)})) => { #[cfg(debug_assertions)] println!("Got payload \"{}\" {:?}", String::from_utf8_lossy(x.as_slice()), &x); },
+                _ => { #[cfg(debug_assertions)] println!("Unknown error, I guess") },
               }
               
             }
