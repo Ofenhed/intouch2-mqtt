@@ -1,12 +1,12 @@
-mod network_package;
+mod intouch2;
 extern crate palette;
 extern crate rand;
 
-use network_package::object::NetworkPackage;
-use network_package::object::NetworkPackageData;
-use network_package::object::PushStatusValue;
-use network_package::parser::*;
-use network_package::composer::*;
+use intouch2::object::NetworkPackage;
+use intouch2::object::NetworkPackageData;
+use intouch2::object::PushStatusValue;
+use intouch2::parser::*;
+use intouch2::composer::*;
 
 use std::net::UdpSocket;
 use std::env::args;
@@ -99,7 +99,7 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
         });
       }
       if let Some(PushStatusValue::FadeColors(x)) = push_values.iter().find(|x| match x { PushStatusValue::FadeColors(_) => true, _ => false }) {
-        use network_package::object::StatusFadeColors::*;
+        use intouch2::object::StatusFadeColors::*;
         let map = object!{"effect" => if *x == Off { "none" } else { "colorloop" }, "colorloopspeed" => if *x == Slow {150} else {20}};
         merge_json_if_not_defined(&mut request_object, map);
       }
