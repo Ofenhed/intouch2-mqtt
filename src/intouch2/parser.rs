@@ -27,7 +27,7 @@ fn parse_pushed_package(input: &[u8]) -> Option<HashMap<u8, (u8, (u8, u8))>> {
   let mut iter = input.iter();
   let count = iter.next()?;
   let mut ret = HashMap::new();
-  for i in 0..*count {
+  for _ in 0..*count {
     let pkg_type = iter.next()?;
     let group = iter.next()?;
     let first = iter.next()?;
