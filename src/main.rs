@@ -23,7 +23,6 @@ use rand::*;
 
 use json::{object,array};
 
-use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 fn generate_uuid() -> Vec<u8> {
@@ -46,7 +45,6 @@ fn merge_json_if_not_defined(target: &mut Option<json::JsonValue>, extra: json::
 
 fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_group_name: String) -> Result<impl FnMut(&PushStatusList) -> (), &'static str> {
   use PushStatusKey::Keyed;
-  let client = reqwest::Client::new();
   let api_url = ["http://", &deconz_host, "/api/", &api_key, "/"].concat();
   let group_number_valid = Duration::new(3600, 0);
   let get_group_apis = move || {
@@ -97,8 +95,8 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
           None => {},
         }
       }
-      if let Some((fountainOn, _)) = push_values.get(&Keyed(PushStatusIndex::Fountain)) {
-        dark_request_object = Some(object!{ "on" => *fountainOn == 0 });
+      if let Some((fountain_on, _)) = push_values.get(&Keyed(PushStatusIndex::Fountain)) {
+        dark_request_object = Some(object!{ "on" => *fountain_on == 0 });
       }
       let current_group_api_url = group_api_url.clone();
       let current_dark_group_api_url = dark_group_api_url.clone();
@@ -109,91 +107,92 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
           println!("Sending command {}", &request_object.dump());
           let response = client.put(&[&current_group_api_url, "/action"].concat()).body(request_object.dump()).send();
           println!("{:?}", response);
-          response.map(|mut x| println!("Response for matching light {}: {}", x.status(), x.text().unwrap_or("NO RESPONSE RECEIVER".to_string())));
+          let _ = response.map(|mut x| println!("Response for matching light {}: {}", x.status(), x.text().unwrap_or("NO RESPONSE RECEIVER".to_string())));
         };
         if let Some(dark_request_object) = dark_request_object {
           println!("Sending command {}", dark_request_object.dump());
           let response = client.put(&[&current_dark_group_api_url, "/action"].concat()).body(dark_request_object.dump()).send();
           println!("{:?}", response);
-          response.map(|mut x| println!("Response for dark light {}: {}", x.status(), x.text().unwrap_or("NO RESPONSE RECEIVER".to_string())));
+          let _ = response.map(|mut x| println!("Response for dark light {}: {}", x.status(), x.text().unwrap_or("NO RESPONSE RECEIVER".to_string())));
         };
       });
     }
   })
 }
 
-fn main() {
+fn main() -> Result<(), std::io::Error> {
   let mut buf = [0; 4096];
   let mut args: Vec<_> = args().collect();
   if args.len() != 6 {
     println!("Usage: {} spa-target deconz-target deconz-api-key deconz-matched-group-name deconz-dark-group-name", args[0]);
-    return;
+    return Ok(());
   }
-  let mut socket = UdpSocket::bind("0.0.0.0:0").expect("Couln't bind");
+  let socket = UdpSocket::bind("0.0.0.0:0")?;
   let deconz_dark_group_name = args.remove(5);
   let deconz_group_name = args.remove(4);
   let api_key = args.remove(3);
   let deconz_host = args.remove(2);
   let mut deconz_client = make_deconz(deconz_host, api_key, deconz_group_name, deconz_dark_group_name).unwrap();
-  socket.set_read_timeout(Some(Duration::new(3, 0)));
-  socket.set_broadcast(true);
-  socket.send_to(compose_network_data(&NetworkPackage::Hello(b"1".to_vec())).as_slice(), &args[1]);
-  if let Ok((len, remote)) = socket.recv_from(& mut buf) {
-    socket.set_broadcast(false);
-    socket.connect(remote);
-    if let Ok(([], NetworkPackage::Hello(receiver))) = parse_network_data(&buf[0..len]) {
-      let (receiver, name) = {
-        let pos = receiver.iter().position(|x| *x == '|' as u8).unwrap_or(receiver.len());
-        let (before, after) = (&receiver[0..pos], &receiver[pos+1..]);
-        (before.to_vec(), after)
-      };
-      let key = generate_uuid();
-      socket.send(compose_network_data(&NetworkPackage::Hello(key.clone())).as_slice());
-      socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::GetVersion}).as_slice());
-      if let Ok(len) = socket.recv(&mut buf) {
-        if let Ok(([], NetworkPackage::Authorized{src, dst, data: NetworkPackageData::Version(x)})) = parse_network_data(&buf[0..len]) {
-          println!("Connected to {}, got version {:?}", String::from_utf8_lossy(name), x);
-          socket.set_read_timeout(Some(Duration::new(0, 100000)));
-          let ping_timeout = Duration::new(3, 0);
-          let mut last_ping = Instant::now();
-          let pong_timeout = ping_timeout * 5;
-          let mut last_pong = Instant::now();
-          loop {
-            if last_ping + ping_timeout <= Instant::now() {
-              last_ping = Instant::now();
-              socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::Ping}).as_slice());
-            }
-            if last_pong + pong_timeout <= Instant::now() {
-              println!("Spa disconnected");
-              ::std::process::exit(66);
-            }
-            if let Ok(len) = socket.recv(&mut buf) {
-              match parse_network_data(&buf[0..len]) {
-                Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Pong})) => { last_pong = Instant::now() },
-                Ok(([], NetworkPackage::Authorized{src: x, dst: y, data: NetworkPackageData::PushStatus(data)})) => { 
-                  socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice());
-                  deconz_client(&data);
-                  #[cfg(debug_assertions)] {
-                    println!("Got status {:?}", &data);
-                    let recomposed = compose_network_data(&NetworkPackage::Authorized{src: x, dst: y, data: NetworkPackageData::PushStatus(data.clone())});
-                    if recomposed == buf[0..len].to_vec() {
-                      println!("Same recomposed");
-                    } else {
-                      println!("Recomposed differ!");
-                      println!("{:?}", &buf[0..len]);
-                      println!("{:?}", recomposed);
-                    }
-                  }
-                },
-                Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Packs})) => { socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice()); }
-                Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Unknown(x)})) => { #[cfg(debug_assertions)] println!("Got payload \"{}\" {:?}", String::from_utf8_lossy(x.as_slice()), &x); },
-                _ => { #[cfg(debug_assertions)] println!("Unknown error, I guess") },
+  socket.set_read_timeout(Some(Duration::new(3, 0)))?;
+  socket.set_broadcast(true)?;
+  socket.send_to(compose_network_data(&NetworkPackage::Hello(b"1".to_vec())).as_slice(), &args[1])?;
+
+  let (len, remote) = socket.recv_from(& mut buf)?;
+  socket.set_broadcast(false)?;
+  socket.connect(remote)?;
+
+  if let Ok(([], NetworkPackage::Hello(receiver))) = parse_network_data(&buf[0..len]) {
+    let (receiver, name) = {
+      let pos = receiver.iter().position(|x| *x == '|' as u8).unwrap_or(receiver.len());
+      let (before, after) = (&receiver[0..pos], &receiver[pos+1..]);
+      (before.to_vec(), after)
+    };
+    let key = generate_uuid();
+    socket.send(compose_network_data(&NetworkPackage::Hello(key.clone())).as_slice())?;
+    socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::GetVersion}).as_slice())?;
+    let len = socket.recv(&mut buf)?;
+    if let Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Version(x)})) = parse_network_data(&buf[0..len]) {
+      println!("Connected to {}, got version {:?}", String::from_utf8_lossy(name), x);
+      socket.set_read_timeout(Some(Duration::new(0, 100000)))?;
+      let ping_timeout = Duration::new(3, 0);
+      let mut last_ping = Instant::now();
+      let pong_timeout = ping_timeout * 5;
+      let mut last_pong = Instant::now();
+      loop {
+        if last_ping + ping_timeout <= Instant::now() {
+          last_ping = Instant::now();
+          socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::Ping}).as_slice())?;
+        }
+        if last_pong + pong_timeout <= Instant::now() {
+          println!("Spa disconnected");
+          ::std::process::exit(66);
+        }
+        if let Ok(len) = socket.recv(&mut buf) {
+          match parse_network_data(&buf[0..len]) {
+            Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Pong})) => { last_pong = Instant::now() },
+            Ok(([], NetworkPackage::Authorized{src: x, dst: y, data: NetworkPackageData::PushStatus(data)})) => { 
+              socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice())?;
+              deconz_client(&data);
+              #[cfg(debug_assertions)] {
+                println!("Got status {:?}", &data);
+                let recomposed = compose_network_data(&NetworkPackage::Authorized{src: x, dst: y, data: NetworkPackageData::PushStatus(data.clone())});
+                if recomposed == buf[0..len].to_vec() {
+                  println!("Same recomposed");
+                } else {
+                  println!("Recomposed differ!");
+                  println!("{:?}", &buf[0..len]);
+                  println!("{:?}", recomposed);
+                }
               }
-              
-            }
+            },
+            Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Packs})) => { socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice())?; }
+            Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Unknown(x)})) => { #[cfg(debug_assertions)] println!("Got payload \"{}\" {:?}", String::from_utf8_lossy(x.as_slice()), &x); },
+            _ => { #[cfg(debug_assertions)] println!("Unknown error, I guess") },
           }
+          
         }
       }
-    };
-  };
+    }
+  }
+  Ok(())
 }

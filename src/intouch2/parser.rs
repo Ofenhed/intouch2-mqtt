@@ -3,10 +3,8 @@ extern crate nom;
 use super::object::*;
 
 use nom::*;
-use nom::error::{make_error,ErrorKind};
 
 use std::collections::HashMap;
-use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 fn surrounded<'a>(before: &'a [u8], after: &'a [u8]) -> impl 'a + for<'r> Fn(&'r [u8]) -> IResult<&'r [u8], &'r [u8]> {
@@ -97,7 +95,7 @@ fn calculate_rgba_from_rgb(r: u8, g: u8, b: u8) -> (u8, u8, u8, u8) {
 pub fn get_status_rgba(data: &PushStatusList) -> (Option<(u8, u8, u8, u8)>, Option<(u8, u8, u8, u8)>) {
   use PushStatusIndex::{Red,Green,Blue,SecondaryRed, SecondaryGreen, SecondaryBlue};
 
-  let mut get = |x: &PushStatusIndex| data.get(&PushStatusKey::Keyed(*x));
+  let get = |x: &PushStatusIndex| data.get(&PushStatusKey::Keyed(*x));
   let fst = |&(x, _)| x;
 
   let (pr, pg, pb, got_primary) = match (get(&Red), get(&Green), get(&Blue)) {

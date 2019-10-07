@@ -1,6 +1,5 @@
 use super::object::*;
 
-use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
 
 fn compose_push_status(x: &PushStatusList) -> Vec<u8> {
@@ -51,6 +50,5 @@ pub fn compose_network_data(input: &NetworkPackage) -> Vec<u8> {
                                                           compose_datas(datas).as_slice(),
                                                           b"</DATAS>",
                                                           b"</PACKT>"].concat(),
-    _ => vec![],
   }
 }
