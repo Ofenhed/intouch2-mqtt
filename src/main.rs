@@ -137,7 +137,6 @@ fn main() {
   let mut deconz_client = make_deconz(deconz_host, api_key, deconz_group_name, deconz_dark_group_name).unwrap();
   socket.set_broadcast(true);
   socket.send_to(compose_network_data(&NetworkPackage::Hello(b"1".to_vec())).as_slice(), &args[1]);
-  println!("{:?}", socket);
   if let Ok((len, remote)) = socket.recv_from(& mut buf) {
     socket.set_broadcast(false);
     socket.connect(remote);
@@ -150,7 +149,7 @@ fn main() {
       let key = generate_uuid();
       socket.send(compose_network_data(&NetworkPackage::Hello(key.clone())).as_slice());
       socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::GetVersion}).as_slice());
-      if let Ok(len) = socket.recv(& mut buf) {
+      if let Ok(len) = socket.recv(&mut buf) {
         if let Ok(([], NetworkPackage::Authorized{src, dst, data: NetworkPackageData::Version(x)})) = parse_network_data(&buf[0..len]) {
           println!("Connected to {}, got version {:?}", String::from_utf8_lossy(name), x);
           socket.set_read_timeout(Some(Duration::new(0, 100000)));
