@@ -135,6 +135,7 @@ fn main() {
   let api_key = args.remove(3);
   let deconz_host = args.remove(2);
   let mut deconz_client = make_deconz(deconz_host, api_key, deconz_group_name, deconz_dark_group_name).unwrap();
+  socket.set_read_timeout(Some(Duration::new(3, 0)));
   socket.set_broadcast(true);
   socket.send_to(compose_network_data(&NetworkPackage::Hello(b"1".to_vec())).as_slice(), &args[1]);
   if let Ok((len, remote)) = socket.recv_from(& mut buf) {
@@ -155,15 +156,20 @@ fn main() {
           socket.set_read_timeout(Some(Duration::new(0, 100000)));
           let ping_timeout = Duration::new(3, 0);
           let mut last_ping = Instant::now();
+          let pong_timeout = ping_timeout * 5;
+          let mut last_pong = Instant::now();
           loop {
             if last_ping + ping_timeout <= Instant::now() {
               last_ping = Instant::now();
               socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::Ping}).as_slice());
             }
-            
+            if last_pong + pong_timeout <= Instant::now() {
+              println!("Spa disconnected");
+              ::std::process::exit(66);
+            }
             if let Ok(len) = socket.recv(&mut buf) {
               match parse_network_data(&buf[0..len]) {
-                Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Pong})) => {},
+                Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Pong})) => { last_pong = Instant::now() },
                 Ok(([], NetworkPackage::Authorized{src: x, dst: y, data: NetworkPackageData::PushStatus(data)})) => { 
                   socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice());
                   deconz_client(&data);
