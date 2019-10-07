@@ -94,6 +94,8 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
           Some(Off) => merge_json_if_not_defined(&mut request_object, object!{"on" => false}),
           None => {},
         }
+      } else if let Some((0, _)) = push_values.get(&Keyed(PushStatusIndex::LightOnTimer)) {
+        merge_json_if_not_defined(&mut request_object, object!{"on" => false});
       }
       if let Some((fountain_on, _)) = push_values.get(&Keyed(PushStatusIndex::Fountain)) {
         dark_request_object = Some(object!{ "on" => *fountain_on == 0 });
