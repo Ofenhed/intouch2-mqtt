@@ -50,7 +50,7 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
     x => if let (b"SVERS", data) = x.split_at(5) { Ok((input, NetworkPackageData::Version(data.to_vec()))) }
          else if let (b"STATP", data) = x.split_at(5) {
            if let Some(partitioned) = parse_pushed_package(data) {
-             if partitioned.len() > 1 {
+             if partitioned.len() > 0 {
                let mut parsed = PushStatusList::new();
                for (field_type, (sub_msg_type, value)) in &partitioned {
                  if let Some(enumed) = FromPrimitive::from_isize(to_push_status_index(*sub_msg_type, *field_type)) {

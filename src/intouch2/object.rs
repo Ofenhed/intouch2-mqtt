@@ -8,10 +8,11 @@ use std::cmp::Ordering;
 type ByteString = Vec<u8>;
 
 #[derive(Eq,Debug,PartialEq,FromPrimitive)]
-pub enum StatusFadeColors {
-  Slow = 1,
-  Quick = 2,
-  Off = 5,
+pub enum StatusColorsType {
+  Off = 0,
+  SlowFade = 1,
+  FastFade = 2,
+  Solid = 5,
 }
 
 pub type PushStatusValue = (u8, u8);
@@ -30,10 +31,11 @@ pub fn from_push_status_index(v: isize) -> (u8, u8) {
 
 #[derive(Eq,Debug,PartialEq,FromPrimitive,ToPrimitive,Hash,Copy,Clone)]
 pub enum PushStatusIndex {
-  FadeColors = key(2, 89),
+  ColorType = key(2, 89),
   Red = key(2, 92),
   Green = key(2, 93),
   Blue = key(2, 94),
+  SecondaryColorType = key(2, 96),
   SecondaryRed = key(2, 99),
   SecondaryGreen = key(2, 100),
   SecondaryBlue = key(2, 101),

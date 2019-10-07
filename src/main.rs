@@ -76,7 +76,6 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
       }
       let mut request_object = None;
       let mut dark_request_object = None;
-      let mut prework = None;
       if let (Some((red, green, blue, intencity)), _) = get_status_rgba(push_values) {
         let xy = Yxy::from(Srgb::new(red as f32 / std::u8::MAX as f32,
                                      green as f32 / std::u8::MAX as f32,
@@ -88,23 +87,14 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
         };
         merge_json_if_not_defined(&mut request_object, map);
       }
-      if let Some((x, _)) = push_values.get(&Keyed(PushStatusIndex::LightOnTimer)) {
-        let map = object!{"on" => *x != 0};
-        let mut request_query = client.get(&group_api_url);
-        let should_be_on = *x != 0;
-        
-        prework = Some(move |mut other_object: &mut _| if let Ok(resp) = &mut request_query.send() {
-          let status = json::parse(&resp.text().unwrap_or("{}".to_string())).unwrap();
-          if status["action"]["on"] != should_be_on {
-              merge_json_if_not_defined(&mut other_object, map);
-          };
-        });
-      }
-      if let Some((x, _)) = push_values.get(&Keyed(PushStatusIndex::FadeColors)) {
-        use intouch2::object::StatusFadeColors::*;
-        if let Some(fading) = FromPrimitive::from_u8(*x) as Option<StatusFadeColors> {
-          let map = object!{"effect" => if fading == Off { "none" } else { "colorloop" }, "colorloopspeed" => if fading == Slow {150} else {20}};
-          merge_json_if_not_defined(&mut request_object, map);
+      if let Some((x, _)) = push_values.get(&Keyed(PushStatusIndex::ColorType)) {
+        use intouch2::object::StatusColorsType::*;
+        match FromPrimitive::from_u8(*x) as Option<StatusColorsType> {
+          Some(Solid) => merge_json_if_not_defined(&mut request_object, object!{"on" => true}),
+          Some(SlowFade) => merge_json_if_not_defined(&mut request_object, object!{"on" => true, "effect" => "colorloop", "colorloopspeed" => 150}),
+          Some(FastFade) => merge_json_if_not_defined(&mut request_object, object!{"on" => true, "effect" => "colorloop", "colorloopspeed" => 5}),
+          Some(Off) => merge_json_if_not_defined(&mut request_object, object!{"on" => false}),
+          None => {},
         }
       }
       if let Some((fountainOn, _)) = push_values.get(&Keyed(PushStatusIndex::Fountain)) {
@@ -114,7 +104,6 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
       let current_dark_group_api_url = dark_group_api_url.clone();
       spawn(move || {
         let client = reqwest::Client::new();
-        prework.map(|x| x(&mut request_object));
         println!("Objects are {:?} and {:?}", request_object, dark_request_object);
         if let Some(request_object) = request_object {
           println!("Sending command {}", &request_object.dump());
