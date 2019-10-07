@@ -135,9 +135,12 @@ fn main() {
   let api_key = args.remove(3);
   let deconz_host = args.remove(2);
   let mut deconz_client = make_deconz(deconz_host, api_key, deconz_group_name, deconz_dark_group_name).unwrap();
-  socket.connect(&args[1]);
-  socket.send(compose_network_data(&NetworkPackage::Hello(b"1".to_vec())).as_slice());
-  if let Ok(len) = socket.recv(& mut buf) {
+  socket.set_broadcast(true);
+  socket.send_to(compose_network_data(&NetworkPackage::Hello(b"1".to_vec())).as_slice(), &args[1]);
+  println!("{:?}", socket);
+  if let Ok((len, remote)) = socket.recv_from(& mut buf) {
+    socket.set_broadcast(false);
+    socket.connect(remote);
     if let Ok(([], NetworkPackage::Hello(receiver))) = parse_network_data(&buf[0..len]) {
       let (receiver, name) = {
         let pos = receiver.iter().position(|x| *x == '|' as u8).unwrap_or(receiver.len());
