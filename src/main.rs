@@ -155,23 +155,24 @@ fn main() -> Result<(), std::io::Error> {
     let len = socket.recv(&mut buf)?;
     if let Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Version(x)})) = parse_network_data(&buf[0..len]) {
       println!("Connected to {}, got version {:?}", String::from_utf8_lossy(name), x);
-      socket.set_read_timeout(Some(Duration::new(0, 100000)))?;
       let ping_timeout = Duration::new(3, 0);
-      let mut last_ping = Instant::now();
-      let pong_timeout = ping_timeout * 5;
-      let mut last_pong = Instant::now();
+      let mut next_ping = Instant::now();
+      let mut unanswered_pings = 0;
+      let max_unanswered_pings = 10;
       loop {
-        if last_ping + ping_timeout <= Instant::now() {
-          last_ping = Instant::now();
+        if next_ping <= Instant::now() {
+          next_ping = Instant::now() + ping_timeout;
           socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::Ping}).as_slice())?;
+          if unanswered_pings >= max_unanswered_pings {
+            println!("Spa disconnected");
+            ::std::process::exit(66);
+          }
+          unanswered_pings = unanswered_pings + 1;
         }
-        if last_pong + pong_timeout <= Instant::now() {
-          println!("Spa disconnected");
-          ::std::process::exit(66);
-        }
+        socket.set_read_timeout(Some(std::cmp::max(Duration::new(0, 10), next_ping - Instant::now())))?;
         if let Ok(len) = socket.recv(&mut buf) {
           match parse_network_data(&buf[0..len]) {
-            Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Pong})) => { last_pong = Instant::now() },
+            Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Pong})) => unanswered_pings = 0,
             Ok(([], NetworkPackage::Authorized{src: x, dst: y, data: NetworkPackageData::PushStatus(data)})) => { 
               socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice())?;
               deconz_client(&data);
