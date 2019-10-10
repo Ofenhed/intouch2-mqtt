@@ -1,16 +1,11 @@
 use super::object::*;
 
-use num_traits::ToPrimitive;
-
 fn compose_push_status(x: &PushStatusList) -> Vec<u8> {
   let mut res = vec![x.len() as u8];
   let mut keys: Vec<_> = x.keys().collect();
   keys.sort();
   for key in keys {
-    let (p1, p2) = match key {
-      PushStatusKey::Keyed(index) => from_push_status_index(ToPrimitive::to_isize(index).unwrap()),
-      PushStatusKey::Indexed(i1, i2) => (*i1, *i2),
-    };
+    let (p1, p2) = from_push_status_key(key);
     res.push(p1);
     res.push(p2);
     let (d1, d2) = x.get(key).unwrap();

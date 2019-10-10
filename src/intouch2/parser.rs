@@ -5,7 +5,6 @@ use super::object::*;
 use nom::*;
 
 use std::collections::HashMap;
-use num_traits::FromPrimitive;
 
 fn surrounded<'a>(before: &'a [u8], after: &'a [u8]) -> impl 'a + for<'r> Fn(&'r [u8]) -> IResult<&'r [u8], &'r [u8]> {
   move |input| 
@@ -21,7 +20,7 @@ fn parse_hello_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
   Ok((input, NetworkPackage::Hello(hello.to_vec())))
 }
 
-fn parse_pushed_package(input: &[u8]) -> Option<HashMap<u8, (u8, (u8, u8))>> {
+fn parse_pushed_package(input: &[u8]) -> Option<HashMap<(u8, u8), (u8, u8)>> {
   let mut iter = input.iter();
   let count = iter.next()?;
   let mut ret = HashMap::new();
@@ -32,7 +31,7 @@ fn parse_pushed_package(input: &[u8]) -> Option<HashMap<u8, (u8, (u8, u8))>> {
     let second = iter.next()?;
     let members = (*first, *second);
     
-    ret.insert(*group, (*pkg_type, members));
+    ret.insert((*pkg_type, *group), members);
   };
   Some(ret)
 }
@@ -50,12 +49,8 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
            if let Some(partitioned) = parse_pushed_package(data) {
              if partitioned.len() > 0 {
                let mut parsed = PushStatusList::new();
-               for (field_type, (sub_msg_type, value)) in &partitioned {
-                 if let Some(enumed) = FromPrimitive::from_isize(to_push_status_index(*sub_msg_type, *field_type)) {
-                   parsed.insert(PushStatusKey::Keyed(enumed), *value);
-                 } else {
-                   parsed.insert(PushStatusKey::Indexed(*sub_msg_type, *field_type), *value);
-                 }
+               for ((field_group, field_name), value) in &partitioned {
+                 parsed.insert(to_push_status_key(*field_group, *field_name), *value);
                }
                Ok((input, NetworkPackageData::PushStatus(parsed)))
              } else {

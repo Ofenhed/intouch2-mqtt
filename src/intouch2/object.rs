@@ -2,6 +2,7 @@
 
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
+use num_traits::FromPrimitive;
 use std::cmp::Ordering;
 
 type ByteString = Vec<u8>;
@@ -20,11 +21,11 @@ const fn key(v1: u8, v2: u8) -> isize {
   (((v1 as u16) << 8) + v2 as u16) as isize
 }
 
-pub fn to_push_status_index(v1: u8, v2: u8) -> isize {
+fn to_push_status_index(v1: u8, v2: u8) -> isize {
   key(v1, v2)
 }
 
-pub fn from_push_status_index(v: isize) -> (u8, u8) {
+fn from_push_status_index(v: isize) -> (u8, u8) {
   ((v >> 8) as u8, v as u8)
 }
 
@@ -87,5 +88,20 @@ impl Ord for PushStatusKey {
 impl PartialOrd for PushStatusKey {
   fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
     Some(self.cmp(&other))
+  }
+}
+
+pub fn to_push_status_key(field_group: u8, field_name: u8) -> PushStatusKey {
+  if let Some(enumed) = FromPrimitive::from_isize(to_push_status_index(field_group, field_name)) {
+    PushStatusKey::Keyed(enumed)
+  } else {
+    PushStatusKey::Indexed(field_group, field_name)
+  }
+}
+
+pub fn from_push_status_key(key: &PushStatusKey) -> (u8, u8) {
+  match key {
+    PushStatusKey::Keyed(x) => from_push_status_index(ToPrimitive::to_isize(x).unwrap()),
+    PushStatusKey::Indexed(x, y) => (*x, *y),
   }
 }
