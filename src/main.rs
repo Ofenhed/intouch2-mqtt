@@ -89,8 +89,8 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
         use intouch2::object::StatusColorsType::*;
         match FromPrimitive::from_u8(*x) as Option<StatusColorsType> {
           Some(Solid) => merge_json_if_not_defined(&mut request_object, object!{"on" => true}),
-          Some(SlowFade) => merge_json_if_not_defined(&mut request_object, object!{"on" => true, "effect" => "colorloop", "colorloopspeed" => 150}),
-          Some(FastFade) => merge_json_if_not_defined(&mut request_object, object!{"on" => true, "effect" => "colorloop", "colorloopspeed" => 5}),
+          Some(SlowFade) => merge_json_if_not_defined(&mut request_object, object!{"effect" => "colorloop", "colorloopspeed" => 150}),
+          Some(FastFade) => merge_json_if_not_defined(&mut request_object, object!{"effect" => "colorloop", "colorloopspeed" => 5}),
           Some(Off) => merge_json_if_not_defined(&mut request_object, object!{"on" => false}),
           None => {},
         }
