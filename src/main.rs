@@ -21,7 +21,8 @@ use palette::{Yxy,Srgb};
 
 use rand::*;
 
-use json::{object,array};
+use serde_json::{json,from_str};
+use serde_json::map::Map;
 
 use num_traits::FromPrimitive;
 
@@ -32,10 +33,10 @@ fn generate_uuid() -> Vec<u8> {
   [b"IOS", &hexed[0..8], b"-", &hexed[8..12], b"-", &hexed[12..16], b"-", &hexed[16..24], b"-", &hexed[24..32]].concat()
 }
 
-fn merge_json_if_not_defined(target: &mut Option<json::JsonValue>, extra: json::JsonValue) {
+fn merge_json_if_not_defined(target: &mut Option<serde_json::Value>, extra: serde_json::Value) {
   match target {
     Some(target) => {
-      for (key, group) in extra.entries() {
+      for (key, group) in extra.as_object().unwrap().iter() {
         target[key] = group.clone();
       }
     },
@@ -50,9 +51,11 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
   let get_group_apis = move || {
     let client = reqwest::Client::new();
     let mut response = client.get(&[&api_url, "groups"].concat()).send().unwrap();
-    let groups = json::parse(&response.text().unwrap_or("{}".to_string())).unwrap();
-    let (light, dark) = groups.entries().fold((None, None), |(light, dark), (key, group)| { if group["name"].to_string() == group_name { (Some(key), dark) }
-                                                                                       else if group["name"].to_string() == dark_group_name { (light, Some(key)) }
+    let groups = from_str(&response.text().unwrap_or("{}".to_string())).unwrap_or(json!(null));
+    let empty_map = Map::new();
+    let groups_object = groups.as_object().unwrap_or(&empty_map).iter();
+    let (light, dark) = groups_object.fold((None, None), |(light, dark), (key, group)| { if group["name"].as_str() == Some(&group_name) { (Some(key), dark) }
+                                                                                       else if group["name"].as_str() == Some(&dark_group_name) { (light, Some(key)) }
                                                                                        else { (light, dark) } });
     println!("Found light groups {:?} and {:?}", light, dark);
     match (light, dark) {
@@ -79,26 +82,26 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
                                      green as f32 / std::u8::MAX as f32,
                                      blue as f32 / std::u8::MAX as f32).into_linear());
         println!("Got red/green/blue {}/{}/{} or x/y {}/{} ({:?})", red, green, blue, xy.x, xy.y, push_values);
-        let map = object!{
-          "xy" => array![xy.x, xy.y],
-          "bri" => intencity,
-        };
+        let map = json!({
+          "xy": [xy.x, xy.y],
+          "bri": intencity,
+        });
         merge_json_if_not_defined(&mut request_object, map);
       }
       if let Some((x, _)) = push_values.get(&Keyed(PushStatusIndex::ColorType)) {
         use intouch2::object::StatusColorsType::*;
         match FromPrimitive::from_u8(*x) as Option<StatusColorsType> {
-          Some(Solid) => merge_json_if_not_defined(&mut request_object, object!{"on" => true}),
-          Some(SlowFade) => merge_json_if_not_defined(&mut request_object, object!{"effect" => "colorloop", "colorloopspeed" => 150}),
-          Some(FastFade) => merge_json_if_not_defined(&mut request_object, object!{"effect" => "colorloop", "colorloopspeed" => 5}),
-          Some(Off) => merge_json_if_not_defined(&mut request_object, object!{"on" => false}),
+          Some(Solid) => merge_json_if_not_defined(&mut request_object, json!({"on": true})),
+          Some(SlowFade) => merge_json_if_not_defined(&mut request_object, json!({"effect": "colorloop", "colorloopspeed": 150})),
+          Some(FastFade) => merge_json_if_not_defined(&mut request_object, json!({"effect": "colorloop", "colorloopspeed": 5})),
+          Some(Off) => merge_json_if_not_defined(&mut request_object, json!({"on": false})),
           None => {},
         }
       } else if let Some((0, _)) = push_values.get(&Keyed(PushStatusIndex::LightOnTimer)) {
-        merge_json_if_not_defined(&mut request_object, object!{"on" => false});
+        merge_json_if_not_defined(&mut request_object, json!({"on": false}));
       }
       if let Some((fountain_on, _)) = push_values.get(&Keyed(PushStatusIndex::Fountain)) {
-        dark_request_object = Some(object!{ "on" => *fountain_on == 0 });
+        dark_request_object = Some(json!({ "on": *fountain_on == 0 }));
       }
       let current_group_api_url = group_api_url.clone();
       let current_dark_group_api_url = dark_group_api_url.clone();
@@ -106,14 +109,14 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
         let client = reqwest::Client::new();
         println!("Objects are {:?} and {:?}", request_object, dark_request_object);
         if let Some(request_object) = request_object {
-          println!("Sending command {}", &request_object.dump());
-          let response = client.put(&[&current_group_api_url, "/action"].concat()).body(request_object.dump()).send();
+          println!("Sending command {}", &request_object.to_string());
+          let response = client.put(&[&current_group_api_url, "/action"].concat()).body(request_object.to_string()).send();
           println!("{:?}", response);
           let _ = response.map(|mut x| println!("Response for matching light {}: {}", x.status(), x.text().unwrap_or("NO RESPONSE RECEIVER".to_string())));
         };
         if let Some(dark_request_object) = dark_request_object {
-          println!("Sending command {}", dark_request_object.dump());
-          let response = client.put(&[&current_dark_group_api_url, "/action"].concat()).body(dark_request_object.dump()).send();
+          println!("Sending command {}", dark_request_object.to_string());
+          let response = client.put(&[&current_dark_group_api_url, "/action"].concat()).body(dark_request_object.to_string()).send();
           println!("{:?}", response);
           let _ = response.map(|mut x| println!("Response for dark light {}: {}", x.status(), x.text().unwrap_or("NO RESPONSE RECEIVER".to_string())));
         };
