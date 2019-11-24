@@ -38,6 +38,8 @@ pub fn compose_network_data(input: &NetworkPackage) -> Vec<u8> {
   }
   match input {
     NetworkPackage::Hello(x) => [b"<HELLO>", x.as_slice(), b"</HELLO>"].concat(),
+    NetworkPackage::Error(ErrorType::Radio) => b"RFERR".to_vec(),
+    NetworkPackage::Error(ErrorType::WaterQuality) => b"WCERR".to_vec(),
     NetworkPackage::Authorized{src, dst, data: datas} => [b"<PACKT>", 
                                                           compose_option(b"<SRCCN>", src, b"</SRCCN>").as_slice(),
                                                           compose_option(b"<DESCN>", dst, b"</DESCN>").as_slice(),

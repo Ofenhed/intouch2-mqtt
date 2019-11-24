@@ -66,8 +66,15 @@ pub enum NetworkPackageData {
 }
 
 #[derive(Eq,Debug,PartialEq)]
+pub enum ErrorType {
+    Radio,
+    WaterQuality,
+}
+
+#[derive(Eq,Debug,PartialEq)]
 pub enum NetworkPackage {
     Authorized{src: Option<ByteString>, dst: Option<ByteString>, data: NetworkPackageData},
+    Error(ErrorType),
     Hello(ByteString),
 }
 

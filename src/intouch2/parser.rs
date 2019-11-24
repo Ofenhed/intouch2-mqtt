@@ -20,6 +20,16 @@ fn parse_hello_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
   Ok((input, NetworkPackage::Hello(hello.to_vec())))
 }
 
+fn parse_error_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
+  let (input, rferr) = opt!(input, tag!(b"RFERR"))?;
+  if let Some(_) = rferr {
+    Ok((input, NetworkPackage::Error(ErrorType::Radio)))
+  } else {
+    let (input, _) = tag!(input, b"WCERR")?;
+    Ok((input, NetworkPackage::Error(ErrorType::WaterQuality)))
+  }
+}
+
 fn parse_pushed_package(input: &[u8]) -> Option<HashMap<(u8, u8), (u8, u8)>> {
   let mut iter = input.iter();
   let count = iter.next()?;
@@ -110,5 +120,5 @@ pub fn get_status_rgba(data: &PushStatusList) -> (Option<(u8, u8, u8, u8)>, Opti
 }
 
 pub fn parse_network_data(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
-  alt!(input, parse_hello_package | parse_authorized_package)
+  alt!(input, parse_hello_package | parse_error_package | parse_authorized_package)
 }
