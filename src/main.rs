@@ -175,7 +175,7 @@ fn main() -> Result<(), std::io::Error> {
           }
           unanswered_pings = unanswered_pings + 1;
         }
-        socket.set_read_timeout(Some(next_ping - Instant::now()))?;
+        socket.set_read_timeout(Some(std::cmp::max(Duration::new(0, 10), next_ping - Instant::now())))?;
         if let Ok(len) = socket.recv(&mut buf) {
           match parse_network_data(&buf[0..len]) {
             Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Pong})) => unanswered_pings = 0,
