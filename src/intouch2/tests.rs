@@ -30,8 +30,8 @@ fn id_packets() {
                      NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::Version(b"some_version".to_vec())},
                      //NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::PushStatus(b"Some status".to_vec())},
                      NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::PushStatusAck},
-                     NetworkPackage::Error(ErrorType::WaterQuality),
-                     NetworkPackage::Error(ErrorType::Radio),
+                     NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::Error(ErrorType::WaterQuality)},
+                     NetworkPackage::Authorized{src: None, dst: None, data: NetworkPackageData::Error(ErrorType::Radio)},
                     ];
   for pkg in packets.into_iter() {
     let composed = compose_network_data(&pkg);

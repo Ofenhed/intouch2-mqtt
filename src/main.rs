@@ -204,8 +204,8 @@ fn main() -> Result<(), std::io::Error> {
               }
             },
             Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Packs})) => { socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice())?; }
+            Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Error(ErrorType::Radio)})) => lost_contact(LostContactReason::RadioError),
             Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Unknown(x)})) => { #[cfg(debug_assertions)] println!("Got payload \"{}\" {:?}", String::from_utf8_lossy(x.as_slice()), &x); },
-            Ok(([], NetworkPackage::Error(ErrorType::Radio))) => lost_contact(LostContactReason::RadioError),
             _ => { #[cfg(debug_assertions)] println!("Unknown error, I guess") },
           }
           

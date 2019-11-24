@@ -24,6 +24,8 @@ fn compose_datas(input: &NetworkPackageData) -> Vec<u8> {
     NetworkPackageData::PushStatus(datas) => [b"STATP", compose_push_status(datas).as_slice()].concat(),
     NetworkPackageData::UnparsablePushStatus(raw_whole) => [b"STATP", raw_whole.as_slice()].concat(),
     NetworkPackageData::PushStatusAck => b"STATQ\xe5".to_vec(),
+    NetworkPackageData::Error(ErrorType::Radio) => b"RFERR".to_vec(),
+    NetworkPackageData::Error(ErrorType::WaterQuality) => b"WCERR".to_vec(),
     NetworkPackageData::Packs => b"PACKS".to_vec(),
     _ => vec![],
   }
@@ -38,8 +40,6 @@ pub fn compose_network_data(input: &NetworkPackage) -> Vec<u8> {
   }
   match input {
     NetworkPackage::Hello(x) => [b"<HELLO>", x.as_slice(), b"</HELLO>"].concat(),
-    NetworkPackage::Error(ErrorType::Radio) => b"RFERR".to_vec(),
-    NetworkPackage::Error(ErrorType::WaterQuality) => b"WCERR".to_vec(),
     NetworkPackage::Authorized{src, dst, data: datas} => [b"<PACKT>", 
                                                           compose_option(b"<SRCCN>", src, b"</SRCCN>").as_slice(),
                                                           compose_option(b"<DESCN>", dst, b"</DESCN>").as_slice(),

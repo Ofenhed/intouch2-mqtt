@@ -53,6 +53,12 @@ pub type PushStatusList = ::std::collections::HashMap<PushStatusKey, PushStatusV
 
 
 #[derive(Eq,Debug,PartialEq)]
+pub enum ErrorType {
+    Radio,
+    WaterQuality,
+}
+
+#[derive(Eq,Debug,PartialEq)]
 pub enum NetworkPackageData {
     Ping,
     Pong,
@@ -62,19 +68,13 @@ pub enum NetworkPackageData {
     UnparsablePushStatus(ByteString),
     PushStatusAck,
     Packs,
+    Error(ErrorType),
     Unknown(ByteString),
-}
-
-#[derive(Eq,Debug,PartialEq)]
-pub enum ErrorType {
-    Radio,
-    WaterQuality,
 }
 
 #[derive(Eq,Debug,PartialEq)]
 pub enum NetworkPackage {
     Authorized{src: Option<ByteString>, dst: Option<ByteString>, data: NetworkPackageData},
-    Error(ErrorType),
     Hello(ByteString),
 }
 
