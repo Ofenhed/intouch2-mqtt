@@ -125,6 +125,16 @@ fn make_deconz(deconz_host: String, api_key: String, group_name: String, dark_gr
   })
 }
 
+#[derive(Eq,PartialEq,Debug)]
+enum LostContactReason {
+  MissingPong,
+  RadioError,
+}
+
+fn lost_contact(reason: LostContactReason) {
+  println!("Lost contact with spa. Reason: {:?}", reason);
+}
+
 fn main() -> Result<(), std::io::Error> {
   let mut buf = [0; 4096];
   let mut args: Vec<_> = args().collect();
@@ -167,8 +177,7 @@ fn main() -> Result<(), std::io::Error> {
           next_ping = Instant::now() + ping_timeout;
           socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::Ping}).as_slice())?;
           if unanswered_pings >= max_unanswered_pings {
-            println!("Spa disconnected");
-            ::std::process::exit(66);
+             lost_contact(LostContactReason::MissingPong);
           }
           if unanswered_pings > 2 {
               println!("Missing {} ping responses", unanswered_pings);
@@ -196,6 +205,7 @@ fn main() -> Result<(), std::io::Error> {
             },
             Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Packs})) => { socket.send(compose_network_data(&NetworkPackage::Authorized{src: Some(key.clone()), dst: Some(receiver.clone()), data: NetworkPackageData::PushStatusAck}).as_slice())?; }
             Ok(([], NetworkPackage::Authorized{src: _, dst: _, data: NetworkPackageData::Unknown(x)})) => { #[cfg(debug_assertions)] println!("Got payload \"{}\" {:?}", String::from_utf8_lossy(x.as_slice()), &x); },
+            Ok(([], NetworkPackage::Error(ErrorType::Radio))) => lost_contact(LostContactReason::RadioError),
             _ => { #[cfg(debug_assertions)] println!("Unknown error, I guess") },
           }
           
