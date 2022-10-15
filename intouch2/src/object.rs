@@ -1,8 +1,7 @@
 #![allow(unused_variables)]
 
-use num_derive::ToPrimitive;
-use num_traits::ToPrimitive;
-use num_traits::FromPrimitive;
+use num_derive::{ToPrimitive, FromPrimitive};
+use num_traits::{ToPrimitive, FromPrimitive};
 use std::cmp::Ordering;
 
 type ByteString = Vec<u8>;

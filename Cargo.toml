@@ -1,17 +1,8 @@
-[package]
-edition = "2018"
-name = "deconz-intouch2"
-version = "0.1.0"
-authors = ["Marcus Ofenhed <marcus@conditionraise.se>"]
-
-[dependencies]
-nom = "5.0.1"
-palette = "0.4.1"
-rand = "0.7"
-reqwest = "0.9"
-serde_json = "1.0"
-num-traits = "0.2"
-num-derive = "0.3"
+[workspace]
+members = [
+  "intouch2",
+  "deconz-simple",
+]
 
 [profile.release]
 codegen-units = 1

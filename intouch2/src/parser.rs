@@ -2,17 +2,15 @@ extern crate nom;
 
 use super::object::*;
 
-use nom::*;
+use nom::{*, bytes::complete::*, combinator::opt};
 
 use std::collections::HashMap;
 
 fn surrounded<'a>(before: &'a [u8], after: &'a [u8]) -> impl 'a + for<'r> Fn(&'r [u8]) -> IResult<&'r [u8], &'r [u8]> {
-  move |input| 
-    do_parse!(input, 
-              tag!(before) >> 
-              data: take_until!(after) >> 
-              tag!(after) >> 
-              (data))
+  move |input| {
+    let (input, ((_, data), _)) = tag(before).and(take_until(after)).and(tag(after)).parse(input)?;
+    Ok((input, data))
+  }
 }
 
 fn parse_hello_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
@@ -30,7 +28,7 @@ fn parse_pushed_package(input: &[u8]) -> Option<HashMap<(u8, u8), (u8, u8)>> {
     let first = iter.next()?;
     let second = iter.next()?;
     let members = (*first, *second);
-    
+
     ret.insert((*pkg_type, *group), members);
   };
   Some(ret)
@@ -67,14 +65,8 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
 }
 
 fn parse_authorized_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
-  do_parse!(input,
-            tag!(b"<PACKT>") >>
-            src: opt!(surrounded(b"<SRCCN>", b"</SRCCN>")) >>
-            dst: opt!(surrounded(b"<DESCN>", b"</DESCN>")) >>
-            datas: parse_datas >>
-            tag!(b"</PACKT>") >>
-            (NetworkPackage::Authorized{src: src.map(|x| x.to_vec()), dst: dst.map(|x| x.to_vec()), data: datas}))
-
+  let (input, ((src, dst), datas)) = surrounded(b"<PACKT>", b"</PACKT>").and_then(opt(surrounded(b"<SRCCN>", b"</SRCCN>")).and(opt(surrounded(b"<DESCN>", b"</DESCN>"))).and(parse_datas)).parse(input)?;
+  Ok((input, NetworkPackage::Authorized{src: src.map(|x| x.to_vec()), dst: dst.map(|x| x.to_vec()), data: datas}))
 }
 
 fn calculate_rgba_from_rgb(r: u8, g: u8, b: u8) -> (u8, u8, u8, u8) {
@@ -99,12 +91,12 @@ pub fn get_status_rgba(data: &PushStatusList) -> (Option<(u8, u8, u8, u8)>, Opti
     (None, None, None) => (0, 0, 0, false),
     (r, g, b) => (fst(r.unwrap_or(&(0,0))), fst(g.unwrap_or(&(0,0))), fst(b.unwrap_or(&(0,0))), true),
   };
-  
+
   let (sr, sg, sb, got_secondary) = match (get(&SecondaryRed), get(&SecondaryGreen), get(&SecondaryBlue)) {
     (None, None, None) => (0, 0, 0, false),
     (r, g, b) => (fst(r.unwrap_or(&(0,0))), fst(g.unwrap_or(&(0,0))), fst(b.unwrap_or(&(0,0))), true),
   };
-  
+
   let left = if got_primary { Some(calculate_rgba_from_rgb(pr, pg, pb)) } else { None };
   let right = if got_secondary { Some(calculate_rgba_from_rgb(sr, sg, sb)) } else { None };
 
@@ -112,5 +104,5 @@ pub fn get_status_rgba(data: &PushStatusList) -> (Option<(u8, u8, u8, u8)>, Opti
 }
 
 pub fn parse_network_data(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
-  alt!(input, parse_hello_package | parse_authorized_package)
+  parse_hello_package.or(parse_authorized_package).parse(input)
 }
