@@ -161,6 +161,37 @@ pub fn get_status_rgba(
   (left, right)
 }
 
+pub fn get_temperature(
+  data: &'_ PushStatusList,
+  previous_temperature: Option<u8>,
+) -> Option<Temperature> {
+  let mut best_result = None;
+  for (index, (msb, lsb)) in data.iter() {
+    if let PushStatusKey::Keyed(key) = index {
+      let result = match key {
+        PushStatusIndex::TargetTemperatureLsb | PushStatusIndex::TargetTemperatureLsbAgain => {
+          Some(Temperature::uncertain(*msb, previous_temperature))
+        }
+        PushStatusIndex::TargetTemperatureMsb | PushStatusIndex::TargetTemperatureMsbAgain => {
+          Some(Temperature::certain(*msb, *lsb))
+        }
+        _ => None,
+      };
+      match (&best_result, &result) {
+        (_, Some(Temperature::Celcius(_))) => {
+          best_result = result;
+          break;
+        }
+        (None, _) => {
+          best_result = result;
+        }
+        _ => (),
+      }
+    }
+  }
+  best_result
+}
+
 pub fn parse_network_data(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
   parse_hello_package
     .or(parse_authorized_package)

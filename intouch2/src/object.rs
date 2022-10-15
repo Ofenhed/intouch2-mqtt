@@ -35,6 +35,10 @@ pub enum PushStatusIndex {
   Green = key(2, 93),
   Blue = key(2, 94),
   SecondaryColorType = key(2, 96),
+  TargetTemperatureLsb = key(0, 2),
+  TargetTemperatureMsb = key(0, 1),
+  TargetTemperatureLsbAgain = key(1, 20),
+  TargetTemperatureMsbAgain = key(1, 19),
   SecondaryRed = key(2, 99),
   SecondaryGreen = key(2, 100),
   SecondaryBlue = key(2, 101),
@@ -78,6 +82,33 @@ pub enum NetworkPackage {
     data: NetworkPackageData,
   },
   Hello(ByteString),
+}
+
+#[derive(Eq, Debug, PartialEq)]
+pub enum Temperature {
+  Celcius(u8),
+  UncertainCelcius(u8, u8),
+}
+
+impl Temperature {
+  pub fn uncertain(lsb: u8, previous: Option<u8>) -> Self {
+    let lsb32 = lsb as u32;
+    let low_result = ((1 << 8) + lsb32) / 18;
+    let high_result = ((2 << 8) + lsb32) / 18;
+    if let Some(previous) = previous {
+      let translated = (previous as u32) * 18;
+      let msb = translated >> 8;
+      Temperature::certain(msb as u8, lsb)
+    } else {
+      Temperature::UncertainCelcius(low_result as u8, high_result as u8)
+    }
+  }
+  pub fn certain(msb: u8, lsb: u8) -> Self {
+    let msb = msb as u32;
+    let lsb = lsb as u32;
+    let result = ((msb << 8) + lsb) / 18;
+    Temperature::Celcius(result as u8)
+  }
 }
 
 impl Ord for PushStatusKey {

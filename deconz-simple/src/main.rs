@@ -56,6 +56,7 @@ struct DeconzClient {
   api_url: String,
   group_name: String,
   dark_group_name: String,
+  last_temperature: Option<u8>,
   cache: Option<DeconzCache>,
 }
 
@@ -77,6 +78,7 @@ impl DeconzClient {
       group_name,
       dark_group_name,
       cache: None,
+      last_temperature: None,
     }
   }
   pub async fn update_cache(&mut self) -> Result<&DeconzCache, &'static str> {
@@ -117,19 +119,23 @@ impl DeconzClient {
     });
     Ok(self.cache.as_ref().unwrap())
   }
-  pub async fn current_cache<'a>(&'a mut self) -> Result<&'a DeconzCache, &'static str> {
+  pub async fn assure_cache_current<'a>(&'a mut self) -> Result<(), &'static str> {
     if let Some(ref cache) = self.cache {
       if cache.group_fetched_at + GROUP_VALID_TIMEOUT < Instant::now() {
-        return self.cache.as_ref().ok_or("Invalid cache");
+        return Ok(());
       }
     }
-    Ok(self.update_cache().await?)
+    self.update_cache().await?;
+    Ok(())
   }
   async fn push_status(&mut self, push_values: &PushStatusList) -> Result<(), &'static str> {
     use PushStatusKey::Keyed;
-    let cache = self.current_cache().await?;
-    let group_api_url = &cache.group_api_url;
-    let dark_group_api_url = &cache.dark_group_api_url;
+    self.assure_cache_current().await?;
+    let (group_api_url, dark_group_api_url) = {
+      let cache = self.cache.as_ref().expect("Could not read cache");
+      (&cache.group_api_url, &cache.dark_group_api_url)
+    };
+
     let mut request_object = None;
     let mut dark_request_object = None;
     if let (Some((red, green, blue, intencity)), _) = get_status_rgba(push_values) {
@@ -150,6 +156,12 @@ impl DeconzClient {
         "bri": intencity,
       });
       merge_json_if_not_defined(&mut request_object, map);
+    }
+    if let Some(temp) = get_temperature(push_values, self.last_temperature) {
+      println!("Got new temperature {:?}", temp);
+      if let Temperature::Celcius(temp) = temp {
+        self.last_temperature = Some(temp);
+      }
     }
     if let Some((x, _)) = push_values.get(&Keyed(PushStatusIndex::ColorType)) {
       use intouch2::object::StatusColorsType::*;
