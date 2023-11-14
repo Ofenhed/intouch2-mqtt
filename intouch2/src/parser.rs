@@ -8,13 +8,13 @@ use std::collections::HashMap;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ParseError {
-    #[error("Error while parsing: {0}")]
-    Parser(#[from] nom::Err<nom::error::Error<Vec<u8>>>),
-    #[error("Unexpected tailing data: {msg:?} {tail:?}")]
-    TailingData {
-        msg: NetworkPackage<'static>,
-        tail: Box<[u8]>,
-    },
+  #[error("Error while parsing: {0}")]
+  Parser(#[from] nom::Err<nom::error::Error<Vec<u8>>>),
+  #[error("Unexpected tailing data: {msg:?} {tail:?}")]
+  TailingData {
+    msg: NetworkPackage<'static>,
+    tail: Box<[u8]>,
+  },
 }
 
 fn surrounded<'a>(
@@ -73,16 +73,10 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
             }
             Ok((input, NetworkPackageData::PushStatus(parsed)))
           } else {
-            Ok((
-              input,
-              NetworkPackageData::UnparsablePushStatus(data.into()),
-            ))
+            Ok((input, NetworkPackageData::UnparsablePushStatus(data.into())))
           }
         } else {
-          Ok((
-            input,
-            NetworkPackageData::UnparsablePushStatus(data.into()),
-          ))
+          Ok((input, NetworkPackageData::UnparsablePushStatus(data.into())))
         }
       } else {
         Ok((input, NetworkPackageData::Unknown(x.into())))
@@ -206,8 +200,13 @@ pub fn get_temperature(
 pub fn parse_network_data<'a>(input: &'a [u8]) -> Result<NetworkPackage<'a>, ParseError> {
   match parse_hello_package
     .or(parse_authorized_package)
-    .parse(input).map_err(|x| x.to_owned())? {
-        ([], msg) => Ok(msg),
-        (tail, msg) => Err(ParseError::TailingData { tail: tail.into(), msg: msg.to_static() }),
+    .parse(input)
+    .map_err(|x| x.to_owned())?
+  {
+    ([], msg) => Ok(msg),
+    (tail, msg) => Err(ParseError::TailingData {
+      tail: tail.into(),
+      msg: msg.to_static(),
+    }),
   }
 }

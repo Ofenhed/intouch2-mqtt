@@ -2,10 +2,10 @@
 use rand::*;
 
 pub mod composer;
-pub mod object;
-pub mod parser;
 pub mod datas;
 pub mod known_datas;
+pub mod object;
+pub mod parser;
 
 pub fn generate_uuid() -> Box<[u8]> {
   let mut rng = rand::thread_rng();
@@ -26,9 +26,9 @@ pub fn generate_uuid() -> Box<[u8]> {
     b"-",
     &hexed[24..32],
   ]
-  .concat().into()
+  .concat()
+  .into()
 }
-
 
 #[cfg(test)]
 mod tests;

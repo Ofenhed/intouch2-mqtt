@@ -24,9 +24,7 @@ fn compose_datas(input: &NetworkPackageData) -> Vec<u8> {
     NetworkPackageData::PushStatus(datas) => {
       [b"STATP", compose_push_status(datas).as_slice()].concat()
     }
-    NetworkPackageData::UnparsablePushStatus(raw_whole) => {
-      [b"STATP", raw_whole.as_ref()].concat()
-    }
+    NetworkPackageData::UnparsablePushStatus(raw_whole) => [b"STATP", raw_whole.as_ref()].concat(),
     NetworkPackageData::PushStatusAck => b"STATQ\xe5".to_vec(),
     NetworkPackageData::Error(ErrorType::Radio) => b"RFERR".to_vec(),
     NetworkPackageData::Error(ErrorType::WaterQuality) => b"WCERR".to_vec(),
