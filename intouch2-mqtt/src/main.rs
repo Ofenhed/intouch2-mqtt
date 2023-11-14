@@ -1,34 +1,30 @@
-use intouch2::{composer::*, generate_uuid, object::*, parser::*};
 
-use clap::{Args, CommandFactory, Parser};
+
+use clap::{Parser};
 use intouch2_mqtt::{port_forward::start_port_forward, spa::SpaConnection, WithBuffer};
 
 use std::{
-  env::args,
   net::IpAddr,
-  string::String,
   sync::{Arc, OnceLock},
-  time::{Duration, Instant},
+  time::{Duration},
 };
 
 use serde::Deserialize;
 
 use tokio::{
-  net::{self, UdpSocket},
-  select,
+  net::{self},
   sync::RwLock,
   task::JoinSet,
-  time::timeout,
 };
 
 // TODO: See https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
 // Do NOT send a retained message, as it will be saved by mosquitto as a ghost device
 
-use reqwest;
 
-use palette::{convert::FromColorUnclamped, Srgb, Yxy};
 
-use serde_json::{from_str, json, map::Map};
+
+
+
 
 mod default_values {
   use super::*;
@@ -322,7 +318,7 @@ pub enum Error {
   NoReplyFromSpa,
 }
 
-async fn with_mqtt(mqtt: ()) -> anyhow::Result<()> {
+async fn with_mqtt(_mqtt: ()) -> anyhow::Result<()> {
   let args = Command::get();
   let mut spa_addrs = net::lookup_host(args.spa.target.as_ref()).await?;
   let spa_addr = if let Some(addr) = spa_addrs.next() {
@@ -346,7 +342,7 @@ async fn with_mqtt(mqtt: ()) -> anyhow::Result<()> {
       Ok(())
     });
   };
-  let mut spa_buffer = Arc::new(SpaConnection::make_buffer());
+  let _spa_buffer = Arc::new(SpaConnection::make_buffer());
   // tickers.insert(spa, |spa: &mut SpaConnection| {
   //    let mut spa_buffer = spa_buffer.clone();
   //    Box::new(async move {

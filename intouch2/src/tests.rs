@@ -1,6 +1,4 @@
-use super::{composer::*, object::*, parser::*, *};
-
-const EMPTY: &[u8] = b"";
+use super::{composer::*, object::*, parser::*};
 
 #[test]
 fn parse_hello() {
