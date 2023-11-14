@@ -1,0 +1,23 @@
+name: "Intouch2-MQTT"
+description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
+version: "0.1"
+slug: "intouch2-mqtt"
+arch:
+  - armhf
+  - armv7
+  - aarch64
+  - amd64
+  - i386
+host_network: true
+stage: experimental
+options:
+  spa_name: "My Spa"
+  forward: false
+schema:
+  spa_host: str
+  spa_name: str
+  forward_port: "int(1, 65535)?"
+  forward_listen_ip: "str?"
+  mqtt_target: "str?"
+  mqtt_user: "str?"
+  mqtt_password: "password?"
