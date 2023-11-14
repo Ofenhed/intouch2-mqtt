@@ -6,6 +6,17 @@ use nom::{bytes::complete::*, combinator::opt, *};
 
 use std::collections::HashMap;
 
+#[derive(thiserror::Error, Debug)]
+pub enum ParseError {
+    #[error("Error while parsing: {0}")]
+    Parser(#[from] nom::Err<nom::error::Error<Vec<u8>>>),
+    #[error("Unexpected tailing data: {msg:?} {tail:?}")]
+    TailingData {
+        msg: NetworkPackage<'static>,
+        tail: Box<[u8]>,
+    },
+}
+
 fn surrounded<'a>(
   before: &'a [u8],
   after: &'a [u8],
@@ -21,7 +32,7 @@ fn surrounded<'a>(
 
 fn parse_hello_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
   let (input, hello) = surrounded(b"<HELLO>", b"</HELLO>")(input)?;
-  Ok((input, NetworkPackage::Hello(hello.to_vec())))
+  Ok((input, NetworkPackage::Hello(hello.into())))
 }
 
 fn parse_pushed_package(input: &[u8]) -> Option<HashMap<(u8, u8), (u8, u8)>> {
@@ -52,7 +63,7 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
     b"WCERR" => Ok((input, NetworkPackageData::Error(ErrorType::WaterQuality))),
     x => {
       if let (b"SVERS", data) = x.split_at(5) {
-        Ok((input, NetworkPackageData::Version(data.to_vec())))
+        Ok((input, NetworkPackageData::Version(data.into())))
       } else if let (b"STATP", data) = x.split_at(5) {
         if let Some(partitioned) = parse_pushed_package(data) {
           if partitioned.len() > 0 {
@@ -64,17 +75,17 @@ fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
           } else {
             Ok((
               input,
-              NetworkPackageData::UnparsablePushStatus(data.to_vec()),
+              NetworkPackageData::UnparsablePushStatus(data.into()),
             ))
           }
         } else {
           Ok((
             input,
-            NetworkPackageData::UnparsablePushStatus(data.to_vec()),
+            NetworkPackageData::UnparsablePushStatus(data.into()),
           ))
         }
       } else {
-        Ok((input, NetworkPackageData::Unknown(x.to_vec())))
+        Ok((input, NetworkPackageData::Unknown(x.into())))
       }
     }
   }
@@ -91,8 +102,8 @@ fn parse_authorized_package(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
   Ok((
     input,
     NetworkPackage::Authorized {
-      src: src.map(|x| x.to_vec()),
-      dst: dst.map(|x| x.to_vec()),
+      src: src.map(|x| x.into()),
+      dst: dst.map(|x| x.into()),
       data: datas,
     },
   ))
@@ -192,8 +203,11 @@ pub fn get_temperature(
   best_result
 }
 
-pub fn parse_network_data(input: &[u8]) -> IResult<&[u8], NetworkPackage> {
-  parse_hello_package
+pub fn parse_network_data<'a>(input: &'a [u8]) -> Result<NetworkPackage<'a>, ParseError> {
+  match parse_hello_package
     .or(parse_authorized_package)
-    .parse(input)
+    .parse(input).map_err(|x| x.to_owned())? {
+        ([], msg) => Ok(msg),
+        (tail, msg) => Err(ParseError::TailingData { tail: tail.into(), msg: msg.to_static() }),
+  }
 }

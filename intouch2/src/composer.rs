@@ -20,12 +20,12 @@ fn compose_datas(input: &NetworkPackageData) -> Vec<u8> {
     NetworkPackageData::Ping => b"APING".to_vec(),
     NetworkPackageData::Pong => b"APING\0".to_vec(),
     NetworkPackageData::GetVersion => b"AVERSJ".to_vec(),
-    NetworkPackageData::Version(x) => [b"SVERS", x.as_slice()].concat(),
+    NetworkPackageData::Version(x) => [b"SVERS", x.as_ref()].concat(),
     NetworkPackageData::PushStatus(datas) => {
       [b"STATP", compose_push_status(datas).as_slice()].concat()
     }
     NetworkPackageData::UnparsablePushStatus(raw_whole) => {
-      [b"STATP", raw_whole.as_slice()].concat()
+      [b"STATP", raw_whole.as_ref()].concat()
     }
     NetworkPackageData::PushStatusAck => b"STATQ\xe5".to_vec(),
     NetworkPackageData::Error(ErrorType::Radio) => b"RFERR".to_vec(),
@@ -35,15 +35,15 @@ fn compose_datas(input: &NetworkPackageData) -> Vec<u8> {
   }
 }
 
-pub fn compose_network_data(input: &NetworkPackage) -> Vec<u8> {
-  fn compose_option(before: &[u8], content: &Option<Vec<u8>>, after: &[u8]) -> Vec<u8> {
+pub fn compose_network_data(input: &NetworkPackage) -> Box<[u8]> {
+  fn compose_option(before: &[u8], content: &Option<impl AsRef<[u8]>>, after: &[u8]) -> Vec<u8> {
     match content {
-      Some(x) => [before, x.as_slice(), after].concat(),
+      Some(x) => [before, x.as_ref(), after].concat(),
       None => vec![],
     }
   }
   match input {
-    NetworkPackage::Hello(x) => [b"<HELLO>", x.as_slice(), b"</HELLO>"].concat(),
+    NetworkPackage::Hello(x) => [b"<HELLO>", x.as_ref(), b"</HELLO>"].concat().into(),
     NetworkPackage::Authorized {
       src,
       dst,
@@ -57,6 +57,7 @@ pub fn compose_network_data(input: &NetworkPackage) -> Vec<u8> {
       b"</DATAS>",
       b"</PACKT>",
     ]
-    .concat(),
+    .concat()
+    .into(),
   }
 }

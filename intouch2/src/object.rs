@@ -2,9 +2,9 @@
 
 pub use num_derive::{FromPrimitive, ToPrimitive};
 pub use num_traits::{FromPrimitive, ToPrimitive};
-use std::cmp::Ordering;
+use std::{cmp::Ordering, borrow::Cow};
 
-type ByteString = Vec<u8>;
+type ByteString<'a> = Cow<'a, [u8]>;
 
 #[derive(Eq, Debug, PartialEq, FromPrimitive)]
 pub enum StatusColorsType {
@@ -54,34 +54,62 @@ pub enum PushStatusKey {
 
 pub type PushStatusList = ::std::collections::HashMap<PushStatusKey, PushStatusValue>;
 
-#[derive(Eq, Debug, PartialEq)]
+#[derive(Eq, Debug, PartialEq, Clone)]
 pub enum ErrorType {
   Radio,
   WaterQuality,
 }
 
 #[derive(Eq, Debug, PartialEq)]
-pub enum NetworkPackageData {
+pub enum NetworkPackageData<'a> {
   Ping,
   Pong,
   GetVersion,
-  Version(ByteString),
+  Version(ByteString<'a>),
   PushStatus(PushStatusList),
-  UnparsablePushStatus(ByteString),
+  UnparsablePushStatus(ByteString<'a>),
   PushStatusAck,
   Packs,
   Error(ErrorType),
-  Unknown(ByteString),
+  Unknown(ByteString<'a>),
+}
+
+impl NetworkPackageData<'_> {
+    pub fn to_static<'a>(&'a self) -> NetworkPackageData<'static> {
+        use NetworkPackageData as X;
+        match self {
+            X::Ping => X::Ping,
+            X::Pong => X::Pong,
+            X::GetVersion => X::GetVersion,
+            X::Version(x) => X::Version(x.clone().into_owned().into()),
+            X::PushStatus(x) => X::PushStatus(x.clone()),
+            X::UnparsablePushStatus(x) => X::UnparsablePushStatus(x.clone().into_owned().into()),
+            X::PushStatusAck => X::PushStatusAck,
+            X::Packs => X::Packs,
+            X::Error(x) => X::Error(x.clone()),
+            X::Unknown(x) => X::Unknown(x.clone().into_owned().into()),
+        }
+    }
 }
 
 #[derive(Eq, Debug, PartialEq)]
-pub enum NetworkPackage {
+pub enum NetworkPackage<'a> {
   Authorized {
-    src: Option<ByteString>,
-    dst: Option<ByteString>,
-    data: NetworkPackageData,
+    src: Option<ByteString<'a>>,
+    dst: Option<ByteString<'a>>,
+    data: NetworkPackageData<'a>,
   },
-  Hello(ByteString),
+  Hello(ByteString<'a>),
+}
+
+impl NetworkPackage<'_> {
+    pub fn to_static(&self) -> NetworkPackage<'static> {
+        use NetworkPackage as X;
+        match self {
+            X::Authorized { src, dst, data } => X::Authorized { src: src.clone().map(|x| x.into_owned().into()), dst: dst.clone().map(|x| x.into_owned().into()), data: data.to_static() },
+            X::Hello(x) => X::Hello(x.clone().into_owned().into()),
+        }
+    }
 }
 
 #[derive(Eq, Debug, PartialEq)]

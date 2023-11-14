@@ -1,7 +1,7 @@
 [workspace]
 members = [
   "intouch2",
-  "deconz-simple",
+  "intouch2-mqtt",
 ]
 
 [profile.release]
