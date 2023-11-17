@@ -5,10 +5,9 @@ pub mod port_forward_mapping;
 pub mod spa;
 
 use std::{
-    borrow::{Borrow, BorrowMut},
     mem::MaybeUninit,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
-    ops::{Deref, DerefMut},
+    ops::{Deref},
     sync::Arc,
 };
 

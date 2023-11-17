@@ -349,7 +349,7 @@ macro_rules! gen_packages {
   };
   (GENERATE_STRUCT_TO_STATIC $enum:ident $struct:ident $struct_life:lifetime) => {
       impl<$struct_life> From<&$struct<$struct_life>> for $struct<'static> {
-          fn from(other: &$struct<$struct_life>) -> $struct<'static> {
+          fn from(_other: &$struct<$struct_life>) -> $struct<'static> {
               todo!()
           }
       }
@@ -394,7 +394,7 @@ macro_rules! gen_packages {
       impl<$($struct_life)? $($trait_life)?> $crate::object::DatasContent<$($struct_life)? $($trait_life)?> for $struct<$($struct_life)?> {
         fn parse(input: & $($struct_life)? [u8]) -> nom::IResult<& $($struct_life)? [u8], Self> {
             use nom::Parser;
-            use $crate::parser::TakeMultiple;
+            
             $( let (input, $var) = $(
                     $($parser)*(input)?;)?
                     $(<<$var_type as ActualType>::Type as DatasContent>::parse(input)?;)?
@@ -455,7 +455,7 @@ macro_rules! gen_packages {
         }
     }
     impl<'a> From<&$tailing<'a>> for $tailing<'static> {
-        fn from(other: &$tailing<'a>) -> $tailing<'static> {
+        fn from(_other: &$tailing<'a>) -> $tailing<'static> {
             todo!()
         }
     }

@@ -12,7 +12,7 @@ use tokio::{
     net::UdpSocket,
     sync::{Mutex, RwLock},
     task::JoinSet,
-    time::{timeout, timeout_at, Instant},
+    time::{timeout_at, Instant},
 };
 
 use crate::{
@@ -128,7 +128,7 @@ impl PortForward {
             }
         }?;
         let mut spa_hello = SpaHello::new(&spa_id)?;
-        let mut hello_response = Arc::new(RwLock::new(compose_network_data(
+        let hello_response = Arc::new(RwLock::new(compose_network_data(
             &NetworkPackage::Hello(Cow::Borrowed(&spa_hello.id)),
         )));
 

@@ -1,12 +1,12 @@
 extern crate nom;
 
-use crate::static_cow;
+
 
 use super::object::*;
 
-use nom::{branch::alt, bytes::complete::*, combinator::opt, error::ErrorKind, *};
+use nom::{bytes::complete::*, combinator::opt, *};
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow};
 
 pub type NomError = nom::error::Error<Vec<u8>>;
 pub type InnerNomError<'a> = nom::error::Error<&'a [u8]>;

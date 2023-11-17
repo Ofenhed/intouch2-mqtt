@@ -3,7 +3,7 @@ use std::{
     cell::SyncUnsafeCell,
     cmp::max,
     collections::{
-        hash_map::{self, Entry},
+        hash_map::{self},
         HashMap,
     },
     net::SocketAddr,

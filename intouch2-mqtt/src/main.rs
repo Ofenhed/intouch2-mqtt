@@ -1,5 +1,5 @@
 use clap::Parser;
-use intouch2_mqtt::{port_forward::PortForward, spa::SpaConnection, WithBuffer};
+use intouch2_mqtt::{port_forward::PortForward};
 
 use std::{
     net::IpAddr,
@@ -13,7 +13,6 @@ use tokio::{
     net::{self},
     sync::RwLock,
     task::JoinSet,
-    time::timeout,
 };
 
 // TODO: See https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
