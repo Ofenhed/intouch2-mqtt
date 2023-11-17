@@ -1,4 +1,6 @@
-//#![feature(generic_const_exprs)]
+#![feature(concat_bytes)]
+use std::borrow::{Borrow, Cow};
+
 use rand::*;
 
 pub mod composer;
@@ -6,6 +8,13 @@ pub mod datas;
 pub mod known_datas;
 pub mod object;
 pub mod parser;
+
+pub fn static_cow<T>(from: impl AsRef<[T]>) -> Cow<'static, [T]>
+where
+  [T]: ToOwned,
+{
+  Cow::Owned(from.as_ref().to_owned())
+}
 
 pub fn generate_uuid() -> Box<[u8]> {
   let mut rng = rand::thread_rng();

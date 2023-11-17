@@ -53,7 +53,7 @@ impl GeckoDatas {
   }
 
   pub fn write<T: KnownData>(&mut self, value: &[u8]) {
-    debug_assert!(value.len() == T::LENGTH.into());
+    debug_assert!(value.len() == T::LENGTH as usize);
     self.write_raw(T::POSITION, value);
   }
 

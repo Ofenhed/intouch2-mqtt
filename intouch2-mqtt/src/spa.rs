@@ -1,5 +1,6 @@
 use std::{
   borrow::Cow,
+  net::SocketAddr,
   sync::{
     atomic::{AtomicU8, Ordering},
     Arc,
@@ -10,17 +11,12 @@ use std::{
 use intouch2::{
   composer::compose_network_data,
   generate_uuid,
-  object::{NetworkPackage, NetworkPackageData},
+  object::{package_data, NetworkPackage, NetworkPackageData},
   parser::{parse_network_data, ParseError},
 };
-use tokio::{
-  net::{ToSocketAddrs, UdpSocket},
-  select,
-  sync::Mutex,
-  time,
-};
+use tokio::{net::UdpSocket, select, sync::Mutex, time};
 
-use crate::WithBuffer;
+use crate::{unspecified_source_for_taget, WithBuffer};
 
 pub struct SpaConnection {
   socket: UdpSocket,
@@ -51,15 +47,12 @@ impl WithBuffer for SpaConnection {
 }
 
 impl SpaConnection {
-  pub async fn new(target: impl ToSocketAddrs) -> Result<Self, SpaError> {
+  pub async fn new(target: &SocketAddr) -> Result<Self, SpaError> {
     let mut buffer = Box::new([0; 4096]);
-    let socket = UdpSocket::bind("0:0").await?;
-    socket.set_broadcast(true)?;
+    let socket = UdpSocket::bind(unspecified_source_for_taget(*target)).await?;
+    socket.connect(target).await?;
     socket
-      .send_to(
-        compose_network_data(&NetworkPackage::Hello(Cow::Borrowed(b"1"))).as_ref(),
-        target,
-      )
+      .send(compose_network_data(&NetworkPackage::Hello(Cow::Borrowed(b"1"))).as_ref())
       .await?;
 
     let (len, remote) = socket.recv_from(buffer.as_mut()).await?;
@@ -84,15 +77,15 @@ impl SpaConnection {
       )))
       .await?;
     socket
-      .send(&compose_network_data(&NetworkPackage::Authorized {
+      .send(&compose_network_data(&NetworkPackage::Addressed {
         src: Some(Cow::Borrowed(&src)),
         dst: Some(Cow::Borrowed(&dst)),
-        data: NetworkPackageData::GetVersion,
+        data: package_data::GetVersion.into(),
       }))
       .await?;
     let len = socket.recv(buffer.as_mut()).await?;
-    let spa_object = match parse_network_data(&buffer[0..len])? {
-      NetworkPackage::Authorized {
+    let spa_object = match parse_network_data(&buffer[0..len])?.to_static() {
+      NetworkPackage::Addressed {
         src: _,
         dst: _,
         data: NetworkPackageData::Version(x),
@@ -110,13 +103,13 @@ impl SpaConnection {
           pings_since_last_pong: 0.into(),
         })
       }
-      msg => Err(SpaError::UnexpectedAnswer(msg.to_static())),
+      msg => Err(SpaError::UnexpectedAnswer(msg.into())),
     }?;
     Ok(spa_object)
   }
 
   fn make_package<'a>(&'a self, data: NetworkPackageData<'a>) -> NetworkPackage<'a> {
-    NetworkPackage::Authorized {
+    NetworkPackage::Addressed {
       src: Some(Cow::Borrowed(&self.src)),
       dst: Some(Cow::Borrowed(&self.dst)),
       data,
@@ -134,7 +127,7 @@ impl SpaConnection {
   ) -> Result<Option<NetworkPackage<'a>>, SpaError> {
     select! {
         _ = self.tick() => {
-            self.socket.send(compose_network_data(&self.make_package(NetworkPackageData::Ping)).as_ref()).await?;
+            self.socket.send(&compose_network_data(&self.make_package(package_data::Ping.into()))).await?;
             let pings_sent = self.pings_since_last_pong.fetch_add(1, Ordering::Relaxed);
             if pings_sent > 5 {
                 Err(SpaError::SpaConnectionLost)
@@ -145,7 +138,7 @@ impl SpaConnection {
         len = self.socket.recv(buffer.as_mut()) => {
             let packet = parse_network_data(&buffer[0..len?])?;
             match packet {
-                NetworkPackage::Authorized { data: NetworkPackageData::Pong, .. } => self.pings_since_last_pong.store(0, Ordering::Relaxed),
+                NetworkPackage::Addressed { data: NetworkPackageData::Pong, .. } => self.pings_since_last_pong.store(0, Ordering::Relaxed),
                 _ => (),
             }
             return Ok(Some(packet));

@@ -1,12 +1,10 @@
-
-
-use clap::{Parser};
-use intouch2_mqtt::{port_forward::start_port_forward, spa::SpaConnection, WithBuffer};
+use clap::Parser;
+use intouch2_mqtt::{port_forward::PortForward, spa::SpaConnection, WithBuffer};
 
 use std::{
   net::IpAddr,
   sync::{Arc, OnceLock},
-  time::{Duration},
+  time::Duration,
 };
 
 use serde::Deserialize;
@@ -15,16 +13,11 @@ use tokio::{
   net::{self},
   sync::RwLock,
   task::JoinSet,
+  time::timeout,
 };
 
 // TODO: See https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
 // Do NOT send a retained message, as it will be saved by mosquitto as a ghost device
-
-
-
-
-
-
 
 mod default_values {
   use super::*;
@@ -148,6 +141,10 @@ struct Command {
   #[serde(flatten)]
   #[command(flatten)]
   mqtt: Option<MqttOptions>,
+  #[arg(short, long)]
+  verbose: bool,
+  #[arg(short, long)]
+  dump_traffic: bool,
 }
 
 impl Command {
@@ -178,136 +175,6 @@ fn lost_contact(reason: LostContactReason) {
   println!("Lost contact with spa. Reason: {:?}", reason);
 }
 
-// async fn connect_spa() -> Result<UdpSocket> {
-//    {
-//      println!(
-//        "Connected to {}, got version {:?}",
-//        String::from_utf8_lossy(name),
-//        x
-//      );
-//      let ping_timeout = Duration::new(3, 0);
-//      let mut next_ping = Instant::now();
-//      let mut unanswered_pings = 0;
-//      let max_unanswered_pings = 10;
-//      loop {
-//        if next_ping <= Instant::now() {
-//          next_ping = Instant::now() + ping_timeout;
-//          socket.send(
-//            compose_network_data(&NetworkPackage::Authorized {
-//              src: Some(key.clone()),
-//              dst: Some(receiver.clone()),
-//              data: NetworkPackageData::Ping,
-//            })
-//            .as_slice(),
-//          ).await?;
-//          if unanswered_pings >= max_unanswered_pings {
-//            lost_contact(LostContactReason::MissingPong);
-//          }
-//          if unanswered_pings > 2 {
-//            println!("Missing {} ping responses", unanswered_pings);
-//          }
-//          unanswered_pings = unanswered_pings + 1;
-//        }
-//        //socket.set_read_timeout(Some(std::cmp::max(
-//        //  Duration::new(0, 10),
-//        //  next_ping - Instant::now(),
-//        //)))?;
-//        if let Ok(len) = socket.recv(&mut buf).await {
-//          match parse_network_data(&buf[0..len]) {
-//            Ok((
-//              [],
-//              NetworkPackage::Authorized {
-//                src: _,
-//                dst: _,
-//                data: NetworkPackageData::Pong,
-//              },
-//            )) => unanswered_pings = 0,
-//            Ok((
-//              [],
-//              NetworkPackage::Authorized {
-//                src: x,
-//                dst: y,
-//                data: NetworkPackageData::PushStatus(data),
-//              },
-//            )) => {
-//              socket.send(
-//                compose_network_data(&NetworkPackage::Authorized {
-//                  src: Some(key.clone()),
-//                  dst: Some(receiver.clone()),
-//                  data: NetworkPackageData::PushStatusAck,
-//                })
-//                .as_slice(),
-//              ).await?;
-//              // TODO: Push status to MQTT here
-//              #[cfg(debug_assertions)]
-//              {
-//                println!("Got status {:?}", &data);
-//                let recomposed = compose_network_data(&NetworkPackage::Authorized {
-//                  src: x,
-//                  dst: y,
-//                  data: NetworkPackageData::PushStatus(data.clone()),
-//                });
-//                if recomposed == buf[0..len].to_vec() {
-//                  println!("Same recomposed");
-//                } else {
-//                  println!("Recomposed differ!");
-//                  println!("{:?}", &buf[0..len]);
-//                  println!("{:?}", recomposed);
-//                }
-//              }
-//            }
-//            Ok((
-//              [],
-//              NetworkPackage::Authorized {
-//                src: _,
-//                dst: _,
-//                data: NetworkPackageData::Packs,
-//              },
-//            )) => {
-//              socket.send(
-//                compose_network_data(&NetworkPackage::Authorized {
-//                  src: Some(key.clone()),
-//                  dst: Some(receiver.clone()),
-//                  data: NetworkPackageData::PushStatusAck,
-//                })
-//                .as_slice(),
-//              ).await?;
-//            }
-//            Ok((
-//              [],
-//              NetworkPackage::Authorized {
-//                src: _,
-//                dst: _,
-//                data: NetworkPackageData::Error(ErrorType::Radio),
-//              },
-//            )) => lost_contact(LostContactReason::RadioError),
-//            Ok((
-//              [],
-//              NetworkPackage::Authorized {
-//                src: _,
-//                dst: _,
-//                data: NetworkPackageData::Unknown(x),
-//              },
-//            )) => {
-//              #[cfg(debug_assertions)]
-//              println!(
-//                "Got payload \"{}\" {:?}",
-//                String::from_utf8_lossy(x.as_slice()),
-//                &x
-//              );
-//            }
-//            _ => {
-//              #[cfg(debug_assertions)]
-//              println!("Unknown error, I guess")
-//            }
-//          }
-//        }
-//      }
-//    }
-//  }
-//  Ok(())
-//}
-
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
   #[error("IO Error: {0}")]
@@ -327,22 +194,31 @@ async fn with_mqtt(_mqtt: ()) -> anyhow::Result<()> {
     Err(Error::NoDnsMatch(args.spa.target.clone()))
   }?;
   println!("Spa addr: {spa_addr}");
-  // let spa = timeout(Duration::from_secs(5), SpaConnection::new(&spa_addr)).await.map_err(|_|
-  // Error::NoReplyFromSpa)??;
   let mut join_set = JoinSet::<anyhow::Result<()>>::new();
+  // let spa = Arc::new(timeout(Duration::from_secs(5),
+  // SpaConnection::new(&spa_addr)).await.map_err(|_| Error::NoReplyFromSpa)??);
+  // join_set.spawn(async move {
+  //    let mut buf = Box::new(SpaConnection::make_buffer());
+  //    loop {
+  //      if let Some(received) = spa.recv(&mut buf).await? {
+  //          println!("Got {}", received);
+  //      }
+  //    }
+  //});
   if let Some(forward) = &args.spa.forward {
+    let forward = PortForward {
+      source_addr: std::net::SocketAddr::new(forward.listen_ip, forward.listen_port),
+      target_addr: spa_addr,
+      handshake_timeout: Duration::from_secs(forward.handshake_timeout.into()),
+      udp_timeout: Duration::from_secs(forward.udp_timeout.into()),
+      verbose: args.verbose,
+      dump_traffic: args.dump_traffic,
+    };
     join_set.spawn(async move {
-      start_port_forward(
-        std::net::SocketAddr::new(forward.listen_ip, forward.listen_port),
-        spa_addr,
-        Duration::from_secs(forward.handshake_timeout.into()),
-        Duration::from_secs(forward.udp_timeout.into()),
-      )
-      .await?;
+      forward.run().await?;
       Ok(())
     });
   };
-  let _spa_buffer = Arc::new(SpaConnection::make_buffer());
   // tickers.insert(spa, |spa: &mut SpaConnection| {
   //    let mut spa_buffer = spa_buffer.clone();
   //    Box::new(async move {
