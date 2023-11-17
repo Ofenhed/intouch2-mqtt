@@ -11,32 +11,32 @@ pub mod parser;
 
 pub fn static_cow<T>(from: impl AsRef<[T]>) -> Cow<'static, [T]>
 where
-  [T]: ToOwned,
+    [T]: ToOwned,
 {
-  Cow::Owned(from.as_ref().to_owned())
+    Cow::Owned(from.as_ref().to_owned())
 }
 
 pub fn generate_uuid() -> Box<[u8]> {
-  let mut rng = rand::thread_rng();
-  let characters = b"0123456789abcdef".to_vec();
-  let hexed: Vec<u8> = [0; 32]
-    .iter()
-    .map(|_| characters[rng.gen_range(0..16)])
-    .collect();
-  [
-    b"IOS",
-    &hexed[0..8],
-    b"-",
-    &hexed[8..12],
-    b"-",
-    &hexed[12..16],
-    b"-",
-    &hexed[16..24],
-    b"-",
-    &hexed[24..32],
-  ]
-  .concat()
-  .into()
+    let mut rng = rand::thread_rng();
+    let characters = b"0123456789abcdef".to_vec();
+    let hexed: Vec<u8> = [0; 32]
+        .iter()
+        .map(|_| characters[rng.gen_range(0..16)])
+        .collect();
+    [
+        b"IOS",
+        &hexed[0..8],
+        b"-",
+        &hexed[8..12],
+        b"-",
+        &hexed[12..16],
+        b"-",
+        &hexed[16..24],
+        b"-",
+        &hexed[24..32],
+    ]
+    .concat()
+    .into()
 }
 
 #[cfg(test)]

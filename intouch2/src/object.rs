@@ -8,20 +8,20 @@ use std::{borrow::Cow, cmp::Ordering, ops::Deref};
 
 #[derive(Eq, Debug, PartialEq, FromPrimitive)]
 pub enum StatusColorsType {
-  Off = 0,
-  SlowFade = 1,
-  FastFade = 2,
-  Solid = 5,
+    Off = 0,
+    SlowFade = 1,
+    FastFade = 2,
+    Solid = 5,
 }
 
 pub mod dispatch {
-  pub trait DatasType {
-    type Group;
-  }
+    pub trait DatasType {
+        type Group;
+    }
 
-  pub struct Simple;
+    pub struct Simple;
 
-  pub struct Tailing;
+    pub struct Tailing;
 }
 
 // pub trait DatasParser<'a> {
@@ -33,19 +33,19 @@ pub mod dispatch {
 //}
 
 pub trait SimpleDatasContent:
-  Default + dispatch::DatasType<Group = dispatch::Simple> + 'static
+    Default + dispatch::DatasType<Group = dispatch::Simple> + 'static
 {
-  const VERB: &'static [u8];
+    const VERB: &'static [u8];
 }
 
 pub trait TailingDatasContent<'a>:
-  dispatch::DatasType<Group = dispatch::Tailing> + Deref<Target = [u8]> + 'a
+    dispatch::DatasType<Group = dispatch::Tailing> + Deref<Target = [u8]> + 'a
 {
-  const VERB: &'static [u8];
+    const VERB: &'static [u8];
 
-  fn from(tail: &'a [u8]) -> Self;
+    fn from(tail: &'a [u8]) -> Self;
 
-  fn into(&self) -> &'a [u8];
+    fn into(&self) -> &'a [u8];
 }
 
 use dispatch::{DatasType, Simple, Tailing};
@@ -99,28 +99,28 @@ disjoint_impls! {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct StatusChange<'a> {
-  pub change: u16,
-  pub data: Cow<'a, [u8; 2]>,
+    pub change: u16,
+    pub data: Cow<'a, [u8; 2]>,
 }
 
 struct Tag;
 
 pub trait ActualType {
-  type Type;
+    type Type;
 }
 
 impl<'a> ActualType for &'a [u8] {
-  type Type = Cow<'a, [u8]>;
+    type Type = Cow<'a, [u8]>;
 }
 
 pub struct StatusChangePlaceholder;
 
 impl<'a, const LENGTH: usize> ActualType for &'a [u8; LENGTH] {
-  type Type = Cow<'a, [u8; LENGTH]>;
+    type Type = Cow<'a, [u8; LENGTH]>;
 }
 
 impl<'a> ActualType for &'a [StatusChangePlaceholder] {
-  type Type = Cow<'a, [StatusChange<'a>]>;
+    type Type = Cow<'a, [StatusChange<'a>]>;
 }
 
 macro_rules! actually_self {
@@ -527,88 +527,90 @@ macro_rules! gen_packages {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PackAction<'a> {
-  Set {
-    config_version: u8,
-    log_version: u8,
-    pos: u16,
-    data: Cow<'a, [u8]>,
-  },
-  KeyPress {
-    key: u8,
-  },
+    Set {
+        config_version: u8,
+        log_version: u8,
+        pos: u16,
+        data: Cow<'a, [u8]>,
+    },
+    KeyPress {
+        key: u8,
+    },
 }
 
 pub struct PackActionPlaceholder;
 impl<'a> ActualType for &'a PackActionPlaceholder {
-  type Type = PackAction<'a>;
+    type Type = PackAction<'a>;
 }
 
 pub mod package_data {
-  use super::*;
-  // trace_macros!(true);
-  gen_packages! {
-    pub enum NetworkPackageData {
-      Ping(b"APING": Simple),
-      Pong(b"APING\0": Simple),
-      GetVersion( b"AVERS": Simple),
-      Packs( b"PACKS": Simple),
-      RadioError(b"RFERR": Simple),
-      WaterQualityError(b"WCERR": Simple),
-      Version(b"SVERS": Tailing),
-      PushStatus {
-          b"STATP": Tag,
-          length: u8,
-          changes: &[StatusChangePlaceholder],
-      },
-      SetStatus {
-          b"SPACK": Tag,
-          seq: u8,
-          pack_type: u8,
-          len: u8,
-          action: &PackActionPlaceholder,
-      },
-      PushStatusAck {
-          b"STATQ": Tag,
-          seq: u8,
-      },
-      RequestStatus {
-          b"STATU": Tag,
-          seq: u8,
-          start: u16,
-          length: u16,
-      },
-      Status {
-          b"STATV": Tag,
-          seq: u8,
-          next: u8,
-          length: u8,
-          data: &[u8],
-      },
-      GetWaterQuality(b"GETWC": Simple),
-      Unknown(b"": Tailing),
+    use super::*;
+    // trace_macros!(true);
+    gen_packages! {
+      pub enum NetworkPackageData {
+        Ping(b"APING": Simple),
+        Pong(b"APING\0": Simple),
+        GetVersion( b"AVERS": Simple),
+        Packs( b"PACKS": Simple),
+        RadioError(b"RFERR": Simple),
+        WaterQualityError(b"WCERR": Simple),
+        Version(b"SVERS": Tailing),
+        PushStatus {
+            b"STATP": Tag,
+            length: u8,
+            changes: &[StatusChangePlaceholder],
+        },
+        SetStatus {
+            b"SPACK": Tag,
+            seq: u8,
+            pack_type: u8,
+            len: u8,
+            action: &PackActionPlaceholder,
+        },
+        PushStatusAck {
+            b"STATQ": Tag,
+            seq: u8,
+        },
+        RequestStatus {
+            b"STATU": Tag,
+            seq: u8,
+            start: u16,
+            length: u16,
+        },
+        Status {
+            b"STATV": Tag,
+            seq: u8,
+            next: u8,
+            length: u8,
+            data: &[u8],
+        },
+        GetWaterQuality(b"GETWC": Simple),
+        Unknown(b"": Tailing),
+      }
     }
-  }
-  // trace_macros!(false);
+    // trace_macros!(false);
 }
 
 impl NetworkPackageData<'_> {
-  pub fn display(&self) -> String {
-    match self {
-      NetworkPackageData::Unknown(data) => format!("Unknown: {}", String::from_utf8_lossy(data)),
-      x => format!("{:?}", x),
+    pub fn display(&self) -> String {
+        match self {
+            NetworkPackageData::Unknown(data) => {
+                format!("Unknown: {}", String::from_utf8_lossy(data))
+            }
+            x => format!("{:?}", x),
+        }
     }
-  }
 }
 
 impl NetworkPackageData<'_> {
-  pub fn to_static(&self) -> NetworkPackageData<'static> {
-    self.into()
-  }
+    pub fn to_static(&self) -> NetworkPackageData<'static> {
+        self.into()
+    }
 }
 impl NetworkPackage<'_> {
-  pub fn to_static(&self) -> NetworkPackage<'static> {
-    self.into()
-  }
+    pub fn to_static(&self) -> NetworkPackage<'static> {
+        self.into()
+    }
 }
 pub use package_data::NetworkPackageData;
 // trace_macros!(false);
@@ -616,47 +618,47 @@ pub use package_data::NetworkPackageData;
 pub type PushStatusValue = (u8, u8);
 
 const fn key(v1: u8, v2: u8) -> isize {
-  (((v1 as u16) << 8) + v2 as u16) as isize
+    (((v1 as u16) << 8) + v2 as u16) as isize
 }
 
 fn to_push_status_index(v1: u8, v2: u8) -> isize {
-  key(v1, v2)
+    key(v1, v2)
 }
 
 fn from_push_status_index(v: isize) -> (u8, u8) {
-  ((v >> 8) as u8, v as u8)
+    ((v >> 8) as u8, v as u8)
 }
 
 #[derive(Eq, Debug, PartialEq, FromPrimitive, ToPrimitive, Hash, Copy, Clone)]
 pub enum PushStatusIndex {
-  ColorType = key(2, 89),
-  Red = key(2, 92),
-  Green = key(2, 93),
-  Blue = key(2, 94),
-  SecondaryColorType = key(2, 96),
-  TargetTemperatureLsb = key(0, 2),
-  TargetTemperatureMsb = key(0, 1),
-  TargetTemperatureLsbAgain = key(1, 20),
-  TargetTemperatureMsbAgain = key(1, 19),
-  SecondaryRed = key(2, 99),
-  SecondaryGreen = key(2, 100),
-  SecondaryBlue = key(2, 101),
-  LightOnTimer = key(1, 49),
-  Fountain = key(1, 107),
+    ColorType = key(2, 89),
+    Red = key(2, 92),
+    Green = key(2, 93),
+    Blue = key(2, 94),
+    SecondaryColorType = key(2, 96),
+    TargetTemperatureLsb = key(0, 2),
+    TargetTemperatureMsb = key(0, 1),
+    TargetTemperatureLsbAgain = key(1, 20),
+    TargetTemperatureMsbAgain = key(1, 19),
+    SecondaryRed = key(2, 99),
+    SecondaryGreen = key(2, 100),
+    SecondaryBlue = key(2, 101),
+    LightOnTimer = key(1, 49),
+    Fountain = key(1, 107),
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone)]
 pub enum PushStatusKey {
-  Keyed(PushStatusIndex),
-  Indexed(u8, u8),
+    Keyed(PushStatusIndex),
+    Indexed(u8, u8),
 }
 
 pub type PushStatusList = ::std::collections::HashMap<PushStatusKey, PushStatusValue>;
 
 #[derive(Eq, Debug, PartialEq, Clone)]
 pub enum ErrorType {
-  Radio,
-  WaterQuality,
+    Radio,
+    WaterQuality,
 }
 
 //#[derive(Default, Debug)]
@@ -750,47 +752,45 @@ pub enum ErrorType {
 
 #[derive(Eq, Debug, PartialEq)]
 pub enum NetworkPackage<'a> {
-  Addressed {
-    src: Option<Cow<'a, [u8]>>,
-    dst: Option<Cow<'a, [u8]>>,
-    data: NetworkPackageData<'a>,
-  },
-  Hello(Cow<'a, [u8]>),
+    Addressed {
+        src: Option<Cow<'a, [u8]>>,
+        dst: Option<Cow<'a, [u8]>>,
+        data: NetworkPackageData<'a>,
+    },
+    Hello(Cow<'a, [u8]>),
 }
 
 impl<'a> From<&NetworkPackage<'a>> for NetworkPackage<'static> {
-  fn from(package: &NetworkPackage<'a>) -> NetworkPackage<'static> {
-    match package {
-      NetworkPackage::Addressed { src, dst, data } => NetworkPackage::Addressed {
-        src: src.as_ref().map(static_cow),
-        dst: dst.as_ref().map(static_cow),
-        data: data.to_static(),
-      },
-      NetworkPackage::Hello(x) => NetworkPackage::Hello(static_cow(x)),
+    fn from(package: &NetworkPackage<'a>) -> NetworkPackage<'static> {
+        match package {
+            NetworkPackage::Addressed { src, dst, data } => NetworkPackage::Addressed {
+                src: src.as_ref().map(static_cow),
+                dst: dst.as_ref().map(static_cow),
+                data: data.to_static(),
+            },
+            NetworkPackage::Hello(x) => NetworkPackage::Hello(static_cow(x)),
+        }
     }
-  }
 }
 
 impl std::fmt::Display for NetworkPackage<'_> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      NetworkPackage::Addressed { src, dst, data } => f.write_fmt(format_args!(
-        "Addressed({}, {}, {:?})",
-        src
-          .as_ref()
-          .map(|x| String::from_utf8_lossy(&x))
-          .unwrap_or("NULL".into()),
-        dst
-          .as_ref()
-          .map(|x| String::from_utf8_lossy(&x))
-          .unwrap_or("NULL".into()),
-        data
-      )),
-      NetworkPackage::Hello(msg) => {
-        f.write_fmt(format_args!("Hello({})", String::from_utf8_lossy(msg)))
-      }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetworkPackage::Addressed { src, dst, data } => f.write_fmt(format_args!(
+                "Addressed({}, {}, {:?})",
+                src.as_ref()
+                    .map(|x| String::from_utf8_lossy(&x))
+                    .unwrap_or("NULL".into()),
+                dst.as_ref()
+                    .map(|x| String::from_utf8_lossy(&x))
+                    .unwrap_or("NULL".into()),
+                data
+            )),
+            NetworkPackage::Hello(msg) => {
+                f.write_fmt(format_args!("Hello({})", String::from_utf8_lossy(msg)))
+            }
+        }
     }
-  }
 }
 
 // impl NetworkPackage<'_> {
@@ -809,62 +809,62 @@ impl std::fmt::Display for NetworkPackage<'_> {
 
 #[derive(Eq, Debug, PartialEq)]
 pub enum Temperature {
-  Celcius(u8),
-  UncertainCelcius(u8, u8),
+    Celcius(u8),
+    UncertainCelcius(u8, u8),
 }
 
 impl Temperature {
-  pub fn uncertain(lsb: u8, previous: Option<u8>) -> Self {
-    let lsb32 = lsb as u32;
-    let low_result = ((1 << 8) + lsb32) / 18;
-    let high_result = ((2 << 8) + lsb32) / 18;
-    if let Some(previous) = previous {
-      let translated = (previous as u32) * 18;
-      let msb = translated >> 8;
-      Temperature::certain(msb as u8, lsb)
-    } else {
-      Temperature::UncertainCelcius(low_result as u8, high_result as u8)
+    pub fn uncertain(lsb: u8, previous: Option<u8>) -> Self {
+        let lsb32 = lsb as u32;
+        let low_result = ((1 << 8) + lsb32) / 18;
+        let high_result = ((2 << 8) + lsb32) / 18;
+        if let Some(previous) = previous {
+            let translated = (previous as u32) * 18;
+            let msb = translated >> 8;
+            Temperature::certain(msb as u8, lsb)
+        } else {
+            Temperature::UncertainCelcius(low_result as u8, high_result as u8)
+        }
     }
-  }
-  pub fn certain(msb: u8, lsb: u8) -> Self {
-    let msb = msb as u32;
-    let lsb = lsb as u32;
-    let result = ((msb << 8) + lsb) / 18;
-    Temperature::Celcius(result as u8)
-  }
+    pub fn certain(msb: u8, lsb: u8) -> Self {
+        let msb = msb as u32;
+        let lsb = lsb as u32;
+        let result = ((msb << 8) + lsb) / 18;
+        Temperature::Celcius(result as u8)
+    }
 }
 
 impl Ord for PushStatusKey {
-  fn cmp(&self, other: &Self) -> Ordering {
-    let first = match self {
-      PushStatusKey::Indexed(x, y) => (*x, *y),
-      PushStatusKey::Keyed(x) => from_push_status_index(ToPrimitive::to_isize(x).unwrap()),
-    };
-    let second = match other {
-      PushStatusKey::Indexed(x, y) => (*x, *y),
-      PushStatusKey::Keyed(x) => from_push_status_index(ToPrimitive::to_isize(x).unwrap()),
-    };
-    first.cmp(&second)
-  }
+    fn cmp(&self, other: &Self) -> Ordering {
+        let first = match self {
+            PushStatusKey::Indexed(x, y) => (*x, *y),
+            PushStatusKey::Keyed(x) => from_push_status_index(ToPrimitive::to_isize(x).unwrap()),
+        };
+        let second = match other {
+            PushStatusKey::Indexed(x, y) => (*x, *y),
+            PushStatusKey::Keyed(x) => from_push_status_index(ToPrimitive::to_isize(x).unwrap()),
+        };
+        first.cmp(&second)
+    }
 }
 
 impl PartialOrd for PushStatusKey {
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    Some(self.cmp(&other))
-  }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(&other))
+    }
 }
 
 pub fn to_push_status_key(field_group: u8, field_name: u8) -> PushStatusKey {
-  if let Some(enumed) = FromPrimitive::from_isize(to_push_status_index(field_group, field_name)) {
-    PushStatusKey::Keyed(enumed)
-  } else {
-    PushStatusKey::Indexed(field_group, field_name)
-  }
+    if let Some(enumed) = FromPrimitive::from_isize(to_push_status_index(field_group, field_name)) {
+        PushStatusKey::Keyed(enumed)
+    } else {
+        PushStatusKey::Indexed(field_group, field_name)
+    }
 }
 
 pub fn from_push_status_key(key: &PushStatusKey) -> (u8, u8) {
-  match key {
-    PushStatusKey::Keyed(x) => from_push_status_index(ToPrimitive::to_isize(x).unwrap()),
-    PushStatusKey::Indexed(x, y) => (*x, *y),
-  }
+    match key {
+        PushStatusKey::Keyed(x) => from_push_status_index(ToPrimitive::to_isize(x).unwrap()),
+        PushStatusKey::Indexed(x, y) => (*x, *y),
+    }
 }
