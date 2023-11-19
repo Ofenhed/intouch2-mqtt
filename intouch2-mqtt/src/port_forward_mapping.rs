@@ -13,26 +13,57 @@ use std::{
 
 use tokio::time::Instant;
 
-#[derive(Debug)]
-pub struct ForwardMappingInfo {
-    id: Weak<[u8]>,
-    addr: Weak<SocketAddr>,
-    last_forward: Instant,
-    last_reply: Option<Instant>,
+#[derive(Eq, PartialEq, Debug, Hash)]
+pub enum ForwardAddr {
+    Pipe,
+    Socket(SocketAddr),
 }
 
-impl ForwardMappingInfo {
-    pub fn id(&self) -> Arc<[u8]> {
+impl std::fmt::Display for ForwardAddr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ForwardAddr::Pipe => f.write_str("Pipe"),
+            ForwardAddr::Socket(s) => s.fmt(f),
+        }
+    }
+}
+
+impl From<SocketAddr> for ForwardAddr {
+    fn from(value: SocketAddr) -> Self {
+        ForwardAddr::Socket(value)
+    }
+}
+
+pub type PeerIdType = [u8];
+pub type PeerAddrType = ForwardAddr;
+
+#[derive(Debug)]
+pub struct ForwardMappingInfo<T> {
+    id: Weak<PeerIdType>,
+    addr: Weak<PeerAddrType>,
+    last_forward: Instant,
+    last_reply: Option<Instant>,
+    context: Option<T>,
+}
+
+impl<T: Send + Sync> ForwardMappingInfo<T> {
+    pub fn id(&self) -> Arc<PeerIdType> {
         let Some(id) = self.id.upgrade() else {
             unreachable!("ForwardMappingInfo is only addressable when mapped with an id")
         };
         id
     }
-    pub fn addr(&self) -> Arc<SocketAddr> {
+    pub fn addr(&self) -> Arc<PeerAddrType> {
         let Some(addr) = self.addr.upgrade() else {
             unreachable!("ForwardMappingInfo is only addressable when mapped with an addr")
         };
         addr
+    }
+    pub fn context(&self) -> &T {
+        match self.context {
+            Some(ref context) => context,
+            None => unreachable!("Context is never called on a dead ForwardMappingInfo, and context is always Some for a valid ForwardMappingInfo")
+        }
     }
     pub fn timeout(&self, handshake_timeout: Duration, timeout: Duration) -> Instant {
         let reply_timeout = if let Some(last_reply) = self.last_reply {
@@ -52,40 +83,46 @@ impl ForwardMappingInfo {
 }
 
 #[derive(Default)]
-pub struct ForwardMapping {
-    ids: HashMap<Arc<[u8]>, Arc<SyncUnsafeCell<ForwardMappingInfo>>>,
-    addrs: HashMap<Arc<SocketAddr>, Arc<SyncUnsafeCell<ForwardMappingInfo>>>,
+pub struct ForwardMapping<T> {
+    ids: HashMap<Arc<PeerIdType>, Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>>,
+    addrs: HashMap<Arc<PeerAddrType>, Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>>,
 }
 
-fn unpack_owned_cell<'a>(from: Arc<SyncUnsafeCell<ForwardMappingInfo>>) -> &'a ForwardMappingInfo {
+fn unpack_owned_cell<'a, T>(
+    from: Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>,
+) -> &'a ForwardMappingInfo<T> {
     unsafe { &*from.get() }
 }
 
-fn unpack_cell<'a>(from: &'a Arc<SyncUnsafeCell<ForwardMappingInfo>>) -> &'a ForwardMappingInfo {
+fn unpack_cell<'a, T>(
+    from: &'a Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>,
+) -> &'a ForwardMappingInfo<T> {
     unsafe { &*from.get() }
 }
 
-fn unpack_owned_cell_mut<'a>(
-    from: Arc<SyncUnsafeCell<ForwardMappingInfo>>,
-) -> &'a ForwardMappingInfo {
+fn unpack_owned_cell_mut<'a, T>(
+    from: Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>,
+) -> &'a ForwardMappingInfo<T> {
     unsafe { &mut *from.get() }
 }
 
-fn unpack_cell_mut(from: &Arc<SyncUnsafeCell<ForwardMappingInfo>>) -> &mut ForwardMappingInfo {
+fn unpack_cell_mut<'a, T>(
+    from: &'a Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>,
+) -> &'a mut ForwardMappingInfo<T> {
     unsafe { &mut *from.get() }
 }
 
-impl ForwardMapping {
-    pub fn get_id_mut(&mut self, id: &[u8]) -> Option<&mut ForwardMappingInfo> {
+impl<T: Send + Sync> ForwardMapping<T> {
+    pub fn get_id_mut(&mut self, id: &PeerIdType) -> Option<&mut ForwardMappingInfo<T>> {
         self.ids.get(id).map(unpack_cell_mut)
     }
-    pub fn get_id(&self, id: &[u8]) -> Option<&ForwardMappingInfo> {
+    pub fn get_id(&self, id: &PeerIdType) -> Option<&ForwardMappingInfo<T>> {
         self.ids.get(id).map(unpack_cell)
     }
-    pub fn get_addr_mut(&mut self, addr: &SocketAddr) -> Option<&mut ForwardMappingInfo> {
+    pub fn get_addr_mut(&mut self, addr: &PeerAddrType) -> Option<&mut ForwardMappingInfo<T>> {
         self.addrs.get(addr).map(unpack_cell_mut)
     }
-    pub fn get_addr(&self, addr: &SocketAddr) -> Option<&ForwardMappingInfo> {
+    pub fn get_addr(&self, addr: &PeerAddrType) -> Option<&ForwardMappingInfo<T>> {
         self.addrs.get(addr).map(unpack_cell)
     }
     pub fn len(&self) -> usize {
@@ -97,7 +134,7 @@ impl ForwardMapping {
         &mut self,
         handshake_timeout: Duration,
         timeout: Duration,
-    ) -> Option<Instant> {
+    ) -> (Box<[T]>, Option<Instant>) {
         let mut to_remove = Vec::with_capacity(self.addrs.len());
         let cutoff = Instant::now();
         let mut lowest = None;
@@ -110,28 +147,31 @@ impl ForwardMapping {
                 lowest = Some(timeout)
             }
         }
+        let mut removed = Vec::with_capacity(to_remove.len());
         for id in to_remove {
-            self.remove_id(&id);
+            if let Some(x) = self.remove_id(&id) {
+                removed.push(x);
+            }
         }
-        lowest
+        (removed.into(), lowest)
     }
     pub fn remove_and_reuse_arcs(
         &mut self,
-        addr: impl Borrow<SocketAddr> + Into<Arc<SocketAddr>>,
-        id: impl Borrow<[u8]> + Into<Arc<[u8]>>,
-    ) -> (Arc<SocketAddr>, Arc<[u8]>) {
-        if let Some((new_addr, id)) = self.remove_id(id.borrow()) {
+        addr: impl Borrow<PeerAddrType> + Into<Arc<PeerAddrType>>,
+        id: impl Borrow<PeerIdType> + Into<Arc<PeerIdType>>,
+    ) -> (Arc<PeerAddrType>, Arc<PeerIdType>) {
+        if let Some((_, new_addr, id)) = self._remove_id(id.borrow()) {
             if new_addr.as_ref() == addr.borrow() {
                 (new_addr, id)
             } else {
-                if let Some((addr, _)) = self.remove_addr(addr.borrow()) {
+                if let Some((_, addr, _)) = self._remove_addr(addr.borrow()) {
                     (addr, id)
                 } else {
                     (addr.into(), id)
                 }
             }
         } else {
-            if let Some((addr, _)) = self.remove_addr(addr.borrow()) {
+            if let Some((_, addr, _)) = self._remove_addr(addr.borrow()) {
                 (addr, id.into())
             } else {
                 (addr.into(), id.into())
@@ -141,9 +181,10 @@ impl ForwardMapping {
 
     pub fn insert<'a, 's: 'a>(
         &'s mut self,
-        addr: impl Borrow<SocketAddr> + Into<Arc<SocketAddr>>,
-        id: impl Borrow<[u8]> + Into<Arc<[u8]>>,
-    ) -> &'a ForwardMappingInfo {
+        addr: impl Borrow<PeerAddrType> + Into<Arc<PeerAddrType>>,
+        id: impl Borrow<PeerIdType> + Into<Arc<PeerIdType>>,
+        context: T,
+    ) -> &'a ForwardMappingInfo<T> {
         if let Some(from_addr) = self
             .addrs
             .get(addr.borrow())
@@ -160,6 +201,7 @@ impl ForwardMapping {
             addr: Arc::downgrade(&addr),
             last_forward: Instant::now(),
             last_reply: None,
+            context: Some(context),
         }));
         self.ids.insert(id, info.clone());
         match self.addrs.entry(addr) {
@@ -170,26 +212,39 @@ impl ForwardMapping {
             hash_map::Entry::Vacant(entry) => unpack_cell(entry.insert(info)),
         }
     }
-    pub fn remove_id(&mut self, id: &[u8]) -> Option<(Arc<SocketAddr>, Arc<[u8]>)> {
+    pub fn remove_id(&mut self, id: &PeerIdType) -> Option<T> {
+        self._remove_id(id).map(|x| x.0)
+    }
+    fn _remove_id(&mut self, id: &PeerIdType) -> Option<(T, Arc<PeerAddrType>, Arc<PeerIdType>)> {
         if let Some((id, info)) = self.ids.remove_entry(id) {
-            let ForwardMappingInfo { addr, .. } = unsafe { &*info.get() };
-            let Some(addr) = addr.upgrade() else {
+            let mapping = unsafe { &mut *info.get() };
+            let Some(addr) = mapping.addr.upgrade() else {
                 unreachable!("id and addr are treated as inseperable")
             };
             self.addrs.remove(&addr);
-            Some((addr, id))
+            let context = std::mem::take(&mut mapping.context)
+                .expect("This invalidates the mapping. It was valid before, so context is Some.");
+            Some((context, addr, id))
         } else {
             None
         }
     }
-    pub fn remove_addr(&mut self, addr: &SocketAddr) -> Option<(Arc<SocketAddr>, Arc<[u8]>)> {
+    pub fn remove_addr(&mut self, addr: &PeerAddrType) -> Option<T> {
+        self._remove_addr(addr).map(|x| x.0)
+    }
+    fn _remove_addr(
+        &mut self,
+        addr: &PeerAddrType,
+    ) -> Option<(T, Arc<PeerAddrType>, Arc<PeerIdType>)> {
         if let Some((addr, info)) = self.addrs.remove_entry(addr) {
-            let ForwardMappingInfo { id, .. } = unsafe { &*info.get() };
-            let Some(id) = id.upgrade() else {
+            let mapping = unsafe { &mut *info.get() };
+            let Some(id) = mapping.id.upgrade() else {
                 unreachable!("id and addr are treated as inseperable")
             };
             self.addrs.remove(&addr);
-            Some((addr, id))
+            let context = std::mem::take(&mut mapping.context)
+                .expect("This invalidates the mapping. It was valid before, so context is Some.");
+            Some((context, addr, id))
         } else {
             None
         }

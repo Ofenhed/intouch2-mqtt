@@ -1,5 +1,5 @@
 #![feature(concat_bytes)]
-use std::borrow::{Cow};
+use std::borrow::Cow;
 
 use rand::*;
 
@@ -8,6 +8,8 @@ pub mod datas;
 pub mod known_datas;
 pub mod object;
 pub mod parser;
+mod to_static;
+pub use to_static::*;
 
 pub fn static_cow<T>(from: impl AsRef<[T]>) -> Cow<'static, [T]>
 where

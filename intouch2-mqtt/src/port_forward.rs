@@ -10,13 +10,14 @@ use std::{
 };
 use tokio::{
     net::UdpSocket,
-    sync::{Mutex, RwLock},
+    sync::{broadcast, mpsc, Mutex, RwLock},
     task::JoinSet,
     time::{timeout_at, Instant},
 };
 
 use crate::{
-    port_forward_mapping::ForwardMapping, unspecified_source_for_taget, Buffers, NoClone, StaticBox,
+    port_forward_mapping::{ForwardAddr, ForwardMapping},
+    unspecified_source_for_taget, Buffers, NoClone, StaticBox,
 };
 
 #[derive(thiserror::Error, Debug)]
@@ -39,17 +40,19 @@ pub enum PortForwardError {
 
 const NET_BUFFER_SIZE: usize = 4096;
 
-pub struct Pipes<R, W> {
-    pub rx: tokio::sync::mpsc::Receiver<R>,
-    pub tx: tokio::sync::mpsc::Sender<W>,
+#[derive(Debug)]
+pub struct PackagePipe {
+    pub rx: mpsc::Receiver<NetworkPackage<'static>>,
+    pub tx: broadcast::Sender<NetworkPackage<'static>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct PortForward {
-    pub source_addr: SocketAddr,
+    pub listen_addr: Option<SocketAddr>,
     pub target_addr: SocketAddr,
     pub handshake_timeout: Duration,
     pub udp_timeout: Duration,
+    pub local_connection: Option<PackagePipe>,
     pub verbose: bool,
     pub dump_traffic: bool,
 }
@@ -90,10 +93,19 @@ impl<'a> SpaHello<'a> {
 impl PortForward {
     pub async fn run(self) -> Result<(), PortForwardError> {
         let target_bind_addr = unspecified_source_for_taget(self.target_addr);
-        let sock_clients = StaticBox::new(UdpSocket::bind(self.source_addr).await?);
-        let send_clients = Arc::new(Mutex::new(sock_clients.to_no_clone()));
-        let recv_clients = sock_clients.to_no_clone();
-        drop(sock_clients);
+        let (send_clients, recv_clients) = if let Some(listen_addr) = self.listen_addr {
+            let sock_clients = StaticBox::new(UdpSocket::bind(listen_addr).await?);
+            let send_clients = Arc::new(Mutex::new(sock_clients.to_no_clone()));
+            let recv_clients = sock_clients.to_no_clone();
+            (Some(send_clients), Some(recv_clients))
+        } else {
+            (None, None)
+        };
+        let (send_pipe, recv_pipe) = if let Some(pipes) = self.local_connection {
+            (Some(pipes.tx), Some(Mutex::new(pipes.rx)))
+        } else {
+            (None, None)
+        };
         let sock_spa = UdpSocket::bind(target_bind_addr).await?;
         sock_spa.connect(self.target_addr).await?;
 
@@ -128,9 +140,9 @@ impl PortForward {
             }
         }?;
         let mut spa_hello = SpaHello::new(&spa_id)?;
-        let hello_response = Arc::new(RwLock::new(compose_network_data(
-            &NetworkPackage::Hello(Cow::Borrowed(&spa_hello.id)),
-        )));
+        let hello_response = Arc::new(RwLock::new(compose_network_data(&NetworkPackage::Hello(
+            Cow::Borrowed(&spa_hello.id),
+        ))));
 
         let sock_spa = StaticBox::new(sock_spa);
         let send_spa = Arc::new(Mutex::new(sock_spa.to_no_clone()));
@@ -147,7 +159,7 @@ impl PortForward {
                 recv_sock: Option<NoClone<UdpSocket>>,
             },
             Timeout {
-                client_addr: SocketAddr,
+                client_addr: ForwardAddr,
             },
             SpawnSpaListener {
                 recv_sock: Option<NoClone<UdpSocket>>,
@@ -155,6 +167,9 @@ impl PortForward {
             SpawnClientListener {
                 recv_sock: Option<NoClone<UdpSocket>>,
             },
+            // SpawnPipeListener {
+            //    rx: Option<NoClone<
+            //},
             SendCompleted {
                 buf: Option<Vec<u8>>,
             },
@@ -165,12 +180,14 @@ impl PortForward {
                 recv_sock: Some(recv_spa),
             })
         });
-        workers.spawn(async {
-            Ok(SocketData::SpawnClientListener {
-                recv_sock: Some(recv_clients),
-            })
-        });
-        let mut forwards: ForwardMapping = Default::default();
+        if let Some(recv_clients) = recv_clients {
+            workers.spawn(async {
+                Ok(SocketData::SpawnClientListener {
+                    recv_sock: Some(recv_clients),
+                })
+            });
+        }
+        let mut forwards: ForwardMapping<()> = Default::default();
         let mut buffers: Buffers<20, Vec<u8>> = Buffers::new();
 
         loop {
@@ -241,7 +258,7 @@ impl PortForward {
                                     eprintln!("{source_addr} -> {}", content.display());
                                 }
                                 let count_before = forwards.len();
-                                forwards.insert(source_addr, &*src);
+                                forwards.insert(ForwardAddr::Socket(source_addr), &*src, ());
                                 if self.verbose && count_before != forwards.len() {
                                     eprintln!(
                                         "New client {} at {}",
@@ -274,6 +291,9 @@ impl PortForward {
                                 }
                             }
                             Ok(NetworkPackage::Hello(_)) => {
+                                let Some(send_clients) = &send_clients else {
+                                    unreachable!("How can you get messages from clients if you don't have any clients?")
+                                };
                                 let send_clients = send_clients.clone();
                                 let hello_response = hello_response.clone();
                                 workers.spawn(async move {
@@ -294,19 +314,26 @@ impl PortForward {
                             ..
                         }) => {
                             if let Some(forward_info) = forwards.get_id(&dst) {
-                                let addr = *forward_info.addr();
-                                if self.dump_traffic {
-                                    eprintln!("{addr} <- {}", content.display());
+                                match *forward_info.addr() {
+                                    ForwardAddr::Pipe => todo!(),
+                                    ForwardAddr::Socket(addr) => {
+                                        let Some(send_clients) = &send_clients else {
+                                            unreachable!("How can you send to clients if there are no clients?")
+                                        };
+                                        if self.dump_traffic {
+                                            eprintln!("{addr} <- {}", content.display());
+                                        }
+                                        let send_clients = send_clients.clone();
+                                        workers.spawn(async move {
+                                            send_clients
+                                                .lock()
+                                                .await
+                                                .send_to(data.as_ref(), addr)
+                                                .await?;
+                                            Ok(SocketData::SendCompleted { buf: Some(data) })
+                                        });
+                                    }
                                 }
-                                let send_clients = send_clients.clone();
-                                workers.spawn(async move {
-                                    send_clients
-                                        .lock()
-                                        .await
-                                        .send_to(data.as_ref(), addr)
-                                        .await?;
-                                    Ok(SocketData::SendCompleted { buf: Some(data) })
-                                });
                             }
                         }
                         Err(package_error) => {

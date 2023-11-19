@@ -1,5 +1,5 @@
 use clap::Parser;
-use intouch2_mqtt::{port_forward::PortForward};
+use intouch2_mqtt::port_forward::PortForward;
 
 use std::{
     net::IpAddr,
@@ -206,12 +206,16 @@ async fn with_mqtt(_mqtt: ()) -> anyhow::Result<()> {
     //});
     if let Some(forward) = &args.spa.forward {
         let forward = PortForward {
-            source_addr: std::net::SocketAddr::new(forward.listen_ip, forward.listen_port),
+            listen_addr: Some(std::net::SocketAddr::new(
+                forward.listen_ip,
+                forward.listen_port,
+            )),
             target_addr: spa_addr,
             handshake_timeout: Duration::from_secs(forward.handshake_timeout.into()),
             udp_timeout: Duration::from_secs(forward.udp_timeout.into()),
             verbose: args.verbose,
             dump_traffic: args.dump_traffic,
+            local_connection: None,
         };
         join_set.spawn(async move {
             forward.run().await?;
@@ -253,7 +257,7 @@ async fn with_mqtt(_mqtt: ()) -> anyhow::Result<()> {
     //}
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // TODO: Connect MQTT
     let result = with_mqtt(()).await;

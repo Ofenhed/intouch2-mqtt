@@ -50,7 +50,7 @@ pub trait TailingDatasContent<'a>:
 
 use dispatch::{DatasType, Simple, Tailing};
 
-use crate::static_cow;
+use crate::{static_cow, ToStatic};
 disjoint_impls! {
   pub trait DatasContent<'a>: Sized {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self>;
@@ -103,6 +103,17 @@ pub struct StatusChange<'a> {
     pub data: Cow<'a, [u8; 2]>,
 }
 
+impl ToStatic for StatusChange<'_> {
+    type Static = StatusChange<'static>;
+
+    fn to_static(&self) -> Self::Static {
+        Self::Static {
+            change: self.change,
+            data: self.data.to_static(),
+        }
+    }
+}
+
 struct Tag;
 
 pub trait ActualType {
@@ -127,6 +138,12 @@ macro_rules! actually_self {
     ($ty:ty $(,$($rest:tt)*)?) => {
         impl ActualType for $ty {
             type Type = $ty;
+        }
+        impl ToStatic for $ty {
+            type Static = $ty;
+            fn to_static(&self) -> Self::Static {
+                *self
+            }
         }
         actually_self!{ $($($rest)*)? }
     };
@@ -187,13 +204,19 @@ macro_rules! gen_packages {
   //(BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : $field_type:ty $(,$($rest:tt)*)?) => {
   //    $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $($struct_lifetime)? $struct { $($current)* $field: $field_type, } => $($($rest)*)? }
   //};
-  (BUILD_STRUCT_FROM_TARGET $struct_lifetime:lifetime $enum_name:ident) => {
+  (DERIVE_CLONE_FOR_STATIC $struct_lifetime:lifetime) => {
     $enum_name <$struct_lifetime>
   };
-  (BUILD_STRUCT_FROM_TARGET $enum_name:ident) => {
-    $enum_name <'static>
+  (DERIVE_CLONE_FOR_STATIC) => {
+    #[derive(Clone)]
   };
-  (BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => ) => {
+  (BUILD_STRUCT_ARGS $enum:ident $struct_lifetime:lifetime $(#[$meta:meta])* $struct:ident { $($current:tt)* } => ) => {
+      $crate::gen_packages!{ FINISH_BUILD_STRUCT_ARGS $enum $struct_lifetime $(#[$meta])* $struct { $($current)* } }
+  };
+  (BUILD_STRUCT_ARGS $enum:ident $(#[$meta:meta])* $struct:ident { $($current:tt)* } => ) => {
+      $crate::gen_packages!{ FINISH_BUILD_STRUCT_ARGS $enum #[derive(Clone)] $struct $(#[$meta])* { $($current)* } }
+  };
+  (FINISH_BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* }) => {
       #[derive(Debug, PartialEq, Eq)]
       $(#[$meta])*
       pub struct $struct $(<$struct_lifetime>)? {
@@ -347,22 +370,38 @@ macro_rules! gen_packages {
   (BUILD_STRUCT_IMPLS $struct:ident $tag:literal [$($field:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => ) => {
     $crate::gen_packages!{ GENERATE_STRUCT_IMPLS { STATIC 'a } $struct $tag [$($field)*] [ $($parser)* ] [ $($composer)* ] { $($saved)* } }
   };
-  (GENERATE_STRUCT_TO_STATIC $enum:ident $struct:ident $struct_life:lifetime) => {
-      impl<$struct_life> From<&$struct<$struct_life>> for $struct<'static> {
-          fn from(_other: &$struct<$struct_life>) -> $struct<'static> {
-              todo!()
+  (GENERATE_STRUCT_TO_STATIC $enum:ident $struct:ident $struct_life:lifetime [ $($($field:ident)+)? ]) => {
+      impl<$struct_life> $crate::ToStatic for $struct<$struct_life> {
+          type Static = $struct<'static>;
+
+          fn to_static(&self) -> Self::Static {
+              Self::Static $({
+                  $($field: $crate::ToStatic::to_static(&self.$field),)*
+              })?
           }
       }
+      //impl<$struct_life> From<&$struct<$struct_life>> for $struct<'static> {
+      //    fn from(_other: &$struct<$struct_life>) -> $struct<'static> {
+      //        todo!()
+      //    }
+      //}
       impl<$struct_life> From<$struct<$struct_life>> for $enum<$struct_life> {
           fn from(other: $struct<$struct_life>) -> $enum<$struct_life> {
               $enum::$struct(other)
           }
       }
   };
-  (GENERATE_STRUCT_TO_STATIC $enum:ident $struct:ident) => {
+  (GENERATE_STRUCT_TO_STATIC $enum:ident $struct:ident [ $($field:ident)* ] ) => {
+      impl $crate::ToStatic for $struct {
+          type Static = $struct;
+
+          fn to_static(&self) -> $struct {
+              self.to_owned()
+          }
+      }
       impl From<&$struct> for $struct {
           fn from(other: &$struct) -> $struct {
-              todo!()
+              other.to_owned()
           }
       }
       impl<'any> From<$struct> for $enum<'any> {
@@ -394,7 +433,7 @@ macro_rules! gen_packages {
       impl<$($struct_life)? $($trait_life)?> $crate::object::DatasContent<$($struct_life)? $($trait_life)?> for $struct<$($struct_life)?> {
         fn parse(input: & $($struct_life)? [u8]) -> nom::IResult<& $($struct_life)? [u8], Self> {
             use nom::Parser;
-            
+
             $( let (input, $var) = $(
                     $($parser)*(input)?;)?
                     $(<<$var_type as ActualType>::Type as DatasContent>::parse(input)?;)?
@@ -415,14 +454,14 @@ macro_rules! gen_packages {
         }
       }
 
-      $crate::gen_packages!{ GENERATE_STRUCT_TO_STATIC $enum $struct $($struct_life)? }
-      //$(
-      //  impl<'a> From<&$struct<$struct_life>> for $struct<'static> {
-      //      fn from(other: &$struct<$struct_life>) -> $struct<'static> {
-      //          todo!()
-      //      }
-      //  }
-      //)?
+      $crate::gen_packages!{ GENERATE_STRUCT_TO_STATIC $enum $struct $($struct_life)? [ $($field)* ] }
+      $(
+        impl<'a> From<&$struct<$struct_life>> for $struct<'static> {
+            fn from(other: &$struct<$struct_life>) -> $struct<'static> {
+                $crate::ToStatic::to_static(other)
+            }
+        }
+      )?
   };
   (WITH_TYPES_LIST $($struct_lifetime:lifetime)? $enum:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(#[$meta:meta])* $struct:ident { $tag:literal : Tag, $($args:tt)* } $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $struct {} => $($args)* }
@@ -431,7 +470,7 @@ macro_rules! gen_packages {
   };
 
   (WITH_TYPES_LIST $enum:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(#[$meta:meta])* $tailing:ident ( $verb:literal : Tailing ) $(,$($rest:tt)*)?) => {
-    #[derive(Debug, PartialEq, Eq, Clone)]
+    #[derive(Debug, PartialEq, Eq)]
     $(#[$meta])*
     pub struct $tailing<'a>(pub &'a [u8]);
     impl $crate :: object :: dispatch :: DatasType for $tailing<'_> {
@@ -471,6 +510,13 @@ macro_rules! gen_packages {
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     $(#[$meta])*
     pub struct $simple;
+    impl $crate::ToStatic for $simple {
+        type Static = $simple;
+
+        fn to_static(&self) -> Self {
+            self.to_owned()
+        }
+    }
     impl $crate :: object :: dispatch :: DatasType for $simple {
       type Group = $crate :: object :: dispatch :: Simple;
     }
@@ -538,6 +584,27 @@ pub enum PackAction<'a> {
     },
 }
 
+impl ToStatic for PackAction<'_> {
+    type Static = PackAction<'static>;
+
+    fn to_static(&self) -> Self::Static {
+        match self.to_owned() {
+            PackAction::Set {
+                config_version,
+                log_version,
+                pos,
+                data,
+            } => PackAction::Set {
+                config_version,
+                log_version,
+                pos,
+                data: data.to_static(),
+            },
+            PackAction::KeyPress { key } => PackAction::KeyPress { key },
+        }
+    }
+}
+
 pub struct PackActionPlaceholder;
 impl<'a> ActualType for &'a PackActionPlaceholder {
     type Type = PackAction<'a>;
@@ -602,16 +669,19 @@ impl NetworkPackageData<'_> {
     }
 }
 
-impl NetworkPackageData<'_> {
-    pub fn to_static(&self) -> NetworkPackageData<'static> {
+impl ToStatic for NetworkPackageData<'_> {
+    type Static = NetworkPackageData<'static>;
+    fn to_static(&self) -> Self::Static {
         self.into()
     }
 }
-impl NetworkPackage<'_> {
-    pub fn to_static(&self) -> NetworkPackage<'static> {
+impl ToStatic for NetworkPackage<'_> {
+    type Static = NetworkPackage<'static>;
+    fn to_static(&self) -> Self::Static {
         self.into()
     }
 }
+
 pub use package_data::NetworkPackageData;
 // trace_macros!(false);
 
@@ -793,19 +863,19 @@ impl std::fmt::Display for NetworkPackage<'_> {
     }
 }
 
-// impl NetworkPackage<'_> {
-//  pub fn to_static(&self) -> NetworkPackage<'static> {
-//    use NetworkPackage as X;
-//    match self {
-//      X::Addressed { src, dst, data } => X::Addressed {
-//        src: src.clone().map(|x| x.into_owned().into()),
-//        dst: dst.clone().map(|x| x.into_owned().into()),
-//        data: data.to_static(),
-//      },
-//      X::Hello(x) => X::Hello(x.clone().into_owned().into()),
-//    }
-//  }
-//}
+impl NetworkPackage<'_> {
+    pub fn to_static(&self) -> NetworkPackage<'static> {
+        use NetworkPackage as X;
+        match self {
+            X::Addressed { src, dst, data } => X::Addressed {
+                src: src.clone().map(|x| x.into_owned().into()),
+                dst: dst.clone().map(|x| x.into_owned().into()),
+                data: data.to_static(),
+            },
+            X::Hello(x) => X::Hello(x.clone().into_owned().into()),
+        }
+    }
+}
 
 #[derive(Eq, Debug, PartialEq)]
 pub enum Temperature {

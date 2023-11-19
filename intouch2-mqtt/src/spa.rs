@@ -13,6 +13,7 @@ use intouch2::{
     generate_uuid,
     object::{package_data, NetworkPackage, NetworkPackageData},
     parser::{parse_network_data, ParseError},
+    ToStatic,
 };
 use tokio::{net::UdpSocket, select, sync::Mutex, time};
 

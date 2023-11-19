@@ -7,7 +7,7 @@ pub mod spa;
 use std::{
     mem::MaybeUninit,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
-    ops::{Deref},
+    ops::Deref,
     sync::Arc,
 };
 

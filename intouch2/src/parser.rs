@@ -1,12 +1,10 @@
 extern crate nom;
 
-
-
 use super::object::*;
 
 use nom::{bytes::complete::*, combinator::opt, *};
 
-use std::{borrow::Cow};
+use std::borrow::Cow;
 
 pub type NomError = nom::error::Error<Vec<u8>>;
 pub type InnerNomError<'a> = nom::error::Error<&'a [u8]>;
