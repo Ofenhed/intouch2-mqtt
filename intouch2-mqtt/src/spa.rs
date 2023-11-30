@@ -15,7 +15,6 @@ use intouch2::{
     composer::compose_network_data,
     datas::GeckoDatas,
     generate_uuid,
-    known_datas::SpaModel,
     object::{
         package_data::{self, SetStatus},
         NetworkPackage, NetworkPackageData, PackAction, StatusChange,
@@ -94,7 +93,7 @@ impl SpaConnection {
         self.state.lock().await.len()
     }
 
-    pub async fn new(pipe: SpaPipe) -> Result<Self, SpaError> {
+    pub async fn new(memory_size: usize, pipe: SpaPipe) -> Result<Self, SpaError> {
         pipe.tx
             .send(NetworkPackage::Hello(Cow::Borrowed(b"1")))
             .await?;
@@ -127,11 +126,9 @@ impl SpaConnection {
                 .to_static(),
             )
             .await?;
-        let state = GeckoDatas::new(SpaModel::Mine);
+        let state = GeckoDatas::new(memory_size);
         let mut full_state_download_interval =
             time::interval_at(time::Instant::now(), Duration::from_secs(1800));
-        // let mut full_state_download_interval = time::interval_at(time::Instant::now(),
-        // Duration::from_secs(60));
         let mut ping_interval = time::interval_at(time::Instant::now(), Duration::from_secs(3));
         for interval in [&mut full_state_download_interval, &mut ping_interval] {
             interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
@@ -170,14 +167,6 @@ impl SpaConnection {
         Ok(spa_object)
     }
 
-    // fn make_package<'a>(&'a self, data: NetworkPackageData<'static>) -> NetworkPackage<'static> {
-    //    NetworkPackage::Addressed {
-    //        src: Some(self.src.clone()),
-    //        dst: Some(self.dst.clone()),
-    //        data,
-    //    }
-    //}
-
     async fn tick(&self) {
         let mut interval = self.ping_interval.lock().await;
         interval.tick().await;
@@ -186,13 +175,6 @@ impl SpaConnection {
     pub async fn recv<'a>(&self) -> Result<(), SpaError> {
         let receiver = self.pipe.subscribe();
         let notify_dirty = Arc::new(tokio::sync::Notify::new());
-        // enum JobResult {
-        //    Ping,
-        //    RequestState,
-        //    StartRecv(tokio::sync::broadcast::Receiver<NetworkPackage<'static>>),
-        //    Recv(tokio::sync::broadcast::Receiver<NetworkPackage<'static>>,
-        // NetworkPackage<'static>),
-        //}
         let gecko_data_len = u16::try_from(self.state.lock().await.len()).expect(
             "If this isn't u16, then the data types are incorrect, and we should not keep going",
         );

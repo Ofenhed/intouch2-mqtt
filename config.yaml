@@ -18,6 +18,7 @@ schema:
   spa_name: str
   forward_port: int(1, 65535)?
   forward_listen_ip: str?
+  spa_memory_size: int(1, 65535)
   mqtt_target: str?
   mqtt_username: str?
   mqtt_password: password?

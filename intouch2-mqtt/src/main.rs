@@ -85,6 +85,9 @@ struct SpaOptions {
         alias = "name"
     )]
     name: Arc<str>,
+    #[arg(long = "spa-memory-size", id = "spa-memory-size")]
+    #[serde(rename = "spa_memory_size")]
+    memory_size: usize,
     #[serde(flatten)]
     #[command(flatten)]
     forward: Option<SpaForward>,
@@ -283,9 +286,12 @@ async fn main() -> anyhow::Result<()> {
     });
     join_set.spawn(async move {
         Ok(JoinResult::SpaConnected(Arc::new(
-            timeout(Duration::from_secs(5), SpaConnection::new(spa_pipe.spa))
-                .await
-                .map_err(|_| Error::NoReplyFromSpa)??,
+            timeout(
+                Duration::from_secs(5),
+                SpaConnection::new(args.spa.memory_size, spa_pipe.spa),
+            )
+            .await
+            .map_err(|_| Error::NoReplyFromSpa)??,
         )))
     });
     let Some(reply) = join_set.join_next().await else {

@@ -233,35 +233,6 @@ impl Session {
         let state_topic = self.topic("light", "first", Topic::State);
         let config_topic = self.topic("light", "first", Topic::Config);
         let command_topic = self.topic("light", "first", Topic::Set);
-        // let payload = home_assistant::ConfigureLight {
-        //    base: home_assistant::ConfigureBase {
-
-        //    },
-        //    unique_id: &unique_id,
-        //    device: &payload_device,
-        //    command_topic: &command_topic,
-        //    rgb_state_topic: &state_topic,
-        //    color_mode: &"rgb",
-
-        //};
-        // let json_payload = serde_json::to_vec(&payload)?;
-        // let config_packet = Packet::Publish(Publish {
-        //    dup: false,
-        //    qospid: QosPid::AtMostOnce,
-        //    retain: false,
-        //    topic_name: &config_topic,
-        //    payload: &json_payload,
-        //});
-        ////let subscribe_packet = Packet::Subscribe(Subscribe {
-        ////    pid: self.next_pid(),
-        ////    topics: vec![SubscribeTopic { topic_path: command_topic, qos: QoS::AtLeastOnce }],
-        //// });
-        // self.mqtt_subscribe(vec![SubscribeTopic { topic_path: command_topic, qos:
-        // QoS::AtLeastOnce }]).await?;
-        ////let encoded_len = encode_slice(&subscribe_packet, self.buffer.as_mut())?;
-        ////self.stream.write(&self.buffer[..encoded_len]).await?;
-        // let encoded_len = encode_slice(&config_packet, self.buffer.as_mut())?;
-        // self.stream.write(&self.buffer[..encoded_len]).await?;
         Ok(())
     }
 

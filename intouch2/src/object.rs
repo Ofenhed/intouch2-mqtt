@@ -24,14 +24,6 @@ pub mod dispatch {
     pub struct Tailing;
 }
 
-// pub trait DatasParser<'a> {
-//  type Result: DatasContent<'a>;
-//
-//  fn parse(&self, input: &'a [u8]) -> nom::IResult<&'a [u8], Self::Result>;
-//
-//  fn compose(&self) -> Box<[u8]>;
-//}
-
 pub trait SimpleDatasContent:
     Default + dispatch::DatasType<Group = dispatch::Simple> + 'static
 {
@@ -434,6 +426,7 @@ macro_rules! gen_packages {
       }
       impl<$($struct_life)? $($trait_life)?> $crate::object::DatasContent<$($struct_life)? $($trait_life)?> for $struct<$($struct_life)?> {
         fn parse(input: & $($struct_life)? [u8]) -> nom::IResult<& $($struct_life)? [u8], Self> {
+            #[allow(unused_import)]
             use nom::Parser;
 
             $( let (input, $var) = $(
@@ -622,7 +615,6 @@ impl<'a> ActualType for &'a PackActionPlaceholder {
 
 pub mod package_data {
     use super::*;
-    // trace_macros!(true);
     gen_packages! {
       pub enum NetworkPackageData {
         Ping(b"APING": Simple),
@@ -665,7 +657,6 @@ pub mod package_data {
         Unknown(b"": Tailing),
       }
     }
-    // trace_macros!(false);
 }
 
 impl NetworkPackageData<'_> {

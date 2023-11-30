@@ -7,11 +7,8 @@ use std::{
     slice::SliceIndex,
 };
 
-use crate::known_datas::{data_size_for, SpaModel};
-
 pub struct GeckoDatas {
     data: Box<[u8]>,
-    model: SpaModel,
     dirty: VecDeque<Range<usize>>,
 }
 
@@ -31,17 +28,14 @@ impl GeckoDatas {
 
 pub struct GeckoDataReference<'a> {
     data: &'a [u8],
-    model: SpaModel,
 }
 
 impl GeckoDatas {
-    pub fn new(model: SpaModel) -> Self {
-        let length = data_size_for(model);
-        let mut vec = Vec::with_capacity(length.into());
-        vec.resize(length.into(), 0);
+    pub fn new(area_size: usize) -> Self {
+        let mut vec = Vec::with_capacity(area_size);
+        vec.resize(area_size, 0);
         Self {
             data: vec.into(),
-            model,
             dirty: Default::default(),
         }
     }
@@ -67,25 +61,6 @@ where
     }
 }
 
-// impl Index<usize> for GeckoDatas {
-//    type Output = u8;
-//
-//    fn index(&self, index: usize) -> &Self::Output {
-//        self.data.index(index)
-//    }
-//}
-
-// struct DirtyIndex<T: ?Sized> {
-//    phantom: PhantomData<T>,
-//}
-// impl<T: ?Sized> DirtyIndex<T> {
-//    fn new() -> Self {
-//        Self {
-//            phantom: PhantomData,
-//        }
-//    }
-//}
-
 trait SliceLen {
     fn slice_len(&self) -> usize;
 }
@@ -101,29 +76,6 @@ impl SliceLen for [u8] {
         self.len()
     }
 }
-
-// impl DirtyIndex<u8> {
-//    fn get(self, needle: &u8, haystack: &[u8]) -> DirtyData {
-//        let start = haystack.as_ptr();
-//        let index = addr_of!(needle) as usize - haystack.as_ptr() as usize;
-//        debug_assert!(index < haystack.len());
-//        DirtyData {
-//            index,
-//            len: 1
-//        }
-//    }
-//}
-// impl DirtyIndex<[u8]> {
-//    fn get(self, needle: &[u8], haystack: &[u8]) -> DirtyData {
-//        let start = haystack.as_ptr();
-//        let index = addr_of!(needle) as usize - haystack.as_ptr() as usize;
-//        debug_assert!(index < haystack.len());
-//        DirtyData {
-//            index,
-//            len: needle.len(),
-//        }
-//    }
-//}
 
 impl<Idx> IndexMut<Idx> for GeckoDatas
 where
@@ -143,32 +95,4 @@ where
         self.dirty.push_back(range);
         slice
     }
-}
-
-// impl IndexMut<usize> for GeckoDatas {
-//    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-//        self.data.index_mut(index)
-//    }
-//}
-
-#[derive(thiserror::Error, Debug)]
-enum GeckoDatasError {
-    #[error("Gecko data out of bounds")]
-    OutOfBounds,
-}
-
-// TODO
-// pub async fn subscribe_to<'a, T: KnownData>(receiver: &'a mut
-// tokio::sync::watch::Receiver<GeckoDatas>) -> T::Result {    receiver.
-//}
-
-impl GeckoDatas {
-    // pub fn read<'a, T: KnownData>(&'a self, from: T) -> T::ReturnType {
-    //    let start = T::POSITION as usize;
-    //    let end = start + T::LENGTH as usize;
-    //    debug_assert!(start < self.data.len());
-    //    debug_assert!(end < self.data.len());
-    //    debug_assert!(end > start);
-    //    self.data[start..end].into()
-    //}
 }

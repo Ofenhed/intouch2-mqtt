@@ -5,7 +5,6 @@ use rand::*;
 
 pub mod composer;
 pub mod datas;
-pub mod known_datas;
 pub mod object;
 pub mod parser;
 mod to_static;
