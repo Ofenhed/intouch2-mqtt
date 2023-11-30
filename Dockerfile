@@ -1,6 +1,10 @@
 FROM rustlang/rust:nightly as base
-ADD . .
-RUN cargo build -p intouch2 --release
+
+RUN echo '[workspace] \
+members = ["intouch2"]' > Cargo.toml
+ADD intouch2 Cargo.lock ./
+RUN cargo build --lib --release
+ADD intouch2-mqtt Cargo.toml ./
 RUN cargo build --bin intouch2-mqtt --release
 
 ARG BUILD_FROM

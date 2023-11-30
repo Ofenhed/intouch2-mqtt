@@ -13,4 +13,4 @@ num-derive = "0.3"
 strum = { version = "0.25", features = ["derive"] }
 rand = "0.8"
 thiserror = "1.0"
-disjoint_impls = "0.3"
+disjoint_impls = "0.4"

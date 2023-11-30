@@ -8,6 +8,3 @@ members = [
 codegen-units = 1
 lto = true
 strip = true
-
-[patch.crates-io]
-disjoint_impls = { git = "https://github.com/Ofenhed/disjoint_impls.git" }
