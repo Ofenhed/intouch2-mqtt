@@ -1,5 +1,7 @@
 FROM rustlang/rust:nightly as base
 
+RUN mkdir /build/
+WORKDIR /build/
 RUN echo '[workspace] \
 members = ["intouch2"]' > Cargo.toml
 ADD intouch2 Cargo.lock ./
