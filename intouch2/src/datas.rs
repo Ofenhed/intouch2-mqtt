@@ -1,8 +1,6 @@
 use std::{
-    borrow::Borrow,
     collections::VecDeque,
-    marker::PhantomData,
-    ops::{Bound, Deref, DerefMut, Index, IndexMut, Range, RangeBounds},
+    ops::{Index, IndexMut, Range},
     ptr::addr_of,
     slice::SliceIndex,
 };
@@ -24,10 +22,6 @@ impl GeckoDatas {
     pub fn pop_dirty(&mut self) -> Option<Range<usize>> {
         self.dirty.pop_front()
     }
-}
-
-pub struct GeckoDataReference<'a> {
-    data: &'a [u8],
 }
 
 impl GeckoDatas {

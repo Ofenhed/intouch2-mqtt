@@ -2,7 +2,6 @@ use intouch2::{
     composer::compose_network_data,
     object::{NetworkPackage, NetworkPackageData},
     parser::parse_network_data,
-    ToStatic,
 };
 use std::{
     borrow::Cow,
@@ -101,6 +100,7 @@ fn transmute_uninit<T>(arr: &mut [MaybeUninit<T>]) -> &mut [T] {
 
 struct SpaHello<'a> {
     id: &'a [u8],
+    #[allow(dead_code)]
     name: &'a [u8],
 }
 
@@ -202,6 +202,7 @@ impl PortForward {
             },
             PipeDied,
             Timeout {
+                // TODO: Add timeout detection
                 client_addr: ForwardAddr,
             },
             SpawnSpaListener {

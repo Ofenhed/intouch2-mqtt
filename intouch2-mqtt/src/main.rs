@@ -6,10 +6,7 @@ use intouch2_mqtt::{
     port_forward::{FullPackagePipe, PortForward, PortForwardError},
     spa::{SpaConnection, SpaError},
 };
-use mqttrs::Packet;
-
 use std::{
-    collections::HashMap,
     ffi::OsStr,
     net::IpAddr,
     sync::{Arc, OnceLock},
@@ -20,7 +17,6 @@ use serde::Deserialize;
 
 use tokio::{
     net::{self},
-    sync::RwLock,
     task::JoinSet,
     time::timeout,
 };
@@ -72,19 +68,19 @@ struct SpaForward {
 }
 
 #[derive(clap::Args, Deserialize)]
-struct SpaOptions {
+struct SpaOptions<'a> {
     #[serde(rename = "spa_target")]
     #[arg(long = "spa-target", id = "spa-target")]
     target: Arc<str>,
-    #[serde(rename = "spa_name", default = "default_values::spa_name")]
+    #[serde(rename = "spa_unique_id", default = "default_values::spa_name")]
     #[arg(
         default_value = "spa_pool",
         short = 'n',
-        long = "spa-name",
-        id = "spa-name",
+        long = "spa-unique-id",
+        id = "spa-unique-id",
         alias = "name"
     )]
-    name: Arc<str>,
+    unique_id: Arc<str>,
     #[arg(long = "spa-memory-size", id = "spa-memory-size")]
     #[serde(rename = "spa_memory_size")]
     memory_size: usize,
@@ -110,10 +106,13 @@ struct SpaOptions {
         alias = "handshake-timeout"
     )]
     handshake_timeout: u16,
+    #[arg(skip)]
+    #[serde(borrow = "'a", flatten)]
+    devices: Option<SpaDevices<'a>>,
 }
 
 #[derive(Deserialize, Default)]
-struct MqttDevices<'a> {
+struct SpaDevices<'a> {
     #[serde(borrow = "'a")]
     lights: Vec<mapping::LightMapping<'a>>,
     #[serde(borrow = "'a")]
@@ -121,7 +120,7 @@ struct MqttDevices<'a> {
 }
 
 #[derive(clap::Args, Deserialize)]
-struct MqttOptions<'a> {
+struct MqttOptions {
     #[serde(rename = "mqtt_target")]
     #[arg(long = "mqtt-target", id = "mqtt-target")]
     target: Option<Arc<str>>,
@@ -138,9 +137,6 @@ struct MqttOptions<'a> {
     #[command(flatten)]
     #[serde(flatten)]
     auth: Option<MqttUser>,
-    #[arg(skip)]
-    #[serde(borrow = "'a")]
-    devices: Option<MqttDevices<'a>>,
 }
 
 #[derive(clap::Args, Deserialize, Clone)]
@@ -172,12 +168,12 @@ struct MqttUser {
 #[derive(Parser, Deserialize)]
 struct Command<'a> {
     #[serde(flatten)]
-    #[command(flatten)]
-    spa: SpaOptions,
-    #[serde(flatten)]
     #[serde(borrow = "'a")]
     #[command(flatten)]
-    mqtt: MqttOptions<'a>,
+    spa: SpaOptions<'a>,
+    #[serde(flatten)]
+    #[command(flatten)]
+    mqtt: MqttOptions,
     #[arg(short, long)]
     verbose: bool,
     #[arg(short, long)]
@@ -197,16 +193,6 @@ impl Command<'_> {
             }
         })
     }
-}
-
-#[derive(Eq, PartialEq, Debug)]
-enum LostContactReason {
-    MissingPong,
-    RadioError,
-}
-
-fn lost_contact(reason: LostContactReason) {
-    println!("Lost contact with spa. Reason: {:?}", reason);
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -230,7 +216,7 @@ pub enum Error {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Command::get();
-    let mut mqtt = if let Some(target) = &args.mqtt.target {
+    let mqtt = if let Some(target) = &args.mqtt.target {
         let auth = if let Some(auth) = &args.mqtt.auth {
             MqttAuth::Simple {
                 username: &auth.username,
@@ -249,9 +235,6 @@ async fn main() -> anyhow::Result<()> {
     } else {
         None
     };
-    if let Some(ref mut mqtt) = mqtt {
-        mqtt.add_test_device().await?;
-    }
     let mut spa_addrs = net::lookup_host(args.spa.target.as_ref()).await?;
     let spa_addr = if let Some(addr) = spa_addrs.next() {
         Ok(addr)
@@ -343,133 +326,27 @@ async fn main() -> anyhow::Result<()> {
                 }
             });
         }
+        let spa_name = String::from_utf8_lossy(spa.name());
         let mut mapping = HardcodedMapping::new(home_assistant::ConfigureDevice {
-            identifiers: Box::new(["spa_unique_name_placeholder"]),
-            name: &args.spa.name,
+            identifiers: Box::from([&*args.spa.unique_id]),
+            name: spa_name.to_string(),
         })?;
-        let primary = mapping::LightMapping {
-            name: "Primary",
-            onoff: mapping::EnumMapping {
-                address: 601,
-                len: 1,
-                bitmap: None,
-                mapping: HashMap::from([
-                    (vec![0u8], b"OFF".into()),
-                    (vec![1u8], b"ON".into()),
-                    (vec![2u8], b"ON".into()),
-                    (vec![5u8], b"ON".into()),
-                ]),
-            },
-            rgb: Some(mapping::PlainMapping {
-                address: 0x25c,
-                len: 3,
-            }),
-            effects: Some(mapping::EnumMapping {
-                address: 601,
-                len: 1,
-                bitmap: None,
-                mapping: HashMap::from([
-                    (vec![0u8], b"None".into()),
-                    (vec![1u8], b"Slow Fade".into()),
-                    (vec![2u8], b"Fast Fade".into()),
-                    (vec![5u8], b"None".into()),
-                ]),
-            }),
-        };
-        let secondary = mapping::LightMapping {
-            name: "Secondary",
-            onoff: mapping::EnumMapping {
-                address: 608,
-                len: 1,
-                bitmap: None,
-                mapping: HashMap::from([
-                    (vec![0u8], b"OFF".into()),
-                    (vec![1u8], b"ON".into()),
-                    (vec![2u8], b"ON".into()),
-                    (vec![5u8], b"ON".into()),
-                ]),
-            },
-            rgb: Some(mapping::PlainMapping {
-                address: 0x263,
-                len: 3,
-            }),
-            effects: Some(mapping::EnumMapping {
-                address: 608,
-                len: 1,
-                bitmap: None,
-                mapping: HashMap::from([
-                    (vec![0u8], b"None".into()),
-                    (vec![1u8], b"Slow Fade".into()),
-                    (vec![2u8], b"Fast Fade".into()),
-                    (vec![5u8], b"None".into()),
-                ]),
-            }),
-        };
-        mapping
-            .add_light("primary", primary, &spa, &mut mqtt)
-            .await?;
-        mapping
-            .add_light("secondary", secondary, &spa, &mut mqtt)
-            .await?;
-        let fountain = FanMapping {
-            name: "Fountain",
-            state_mapping: mapping::EnumMapping {
-                address: 363,
-                len: 1,
-                bitmap: Some(vec![0x3]),
-                mapping: HashMap::from([(vec![0u8], b"OFF".into()), (vec![1u8], b"ON".into())]),
-            },
-            percent_mapping: None,
-        };
-        let first = FanMapping {
-            name: "Pump 1",
-            state_mapping: mapping::EnumMapping {
-                address: 259,
-                len: 1,
-                bitmap: Some(vec![0x3]),
-                mapping: HashMap::from([
-                    (vec![0u8], b"OFF".into()),
-                    (vec![1u8], b"ON".into()),
-                    (vec![2u8], b"ON".into()),
-                ]),
-            },
-            percent_mapping: Some(mapping::EnumMapping {
-                address: 259,
-                bitmap: Some(vec![0x3]),
-                len: 1,
-                mapping: HashMap::from([
-                    (vec![0u8], b"0".into()),
-                    (vec![1u8], b"50".into()),
-                    (vec![2u8], b"100".into()),
-                ]),
-            }),
-        };
-        let second = FanMapping {
-            name: "Pump 2",
-            state_mapping: mapping::EnumMapping {
-                address: 261,
-                len: 1,
-                bitmap: Some(vec![0x4]),
-                mapping: HashMap::from([(vec![0u8], b"OFF".into()), (vec![4u8], b"ON".into())]),
-            },
-            percent_mapping: None,
-        };
-        let third = FanMapping {
-            name: "Pump 3",
-            state_mapping: mapping::EnumMapping {
-                address: 261,
-                len: 1,
-                bitmap: Some(vec![16]),
-                mapping: HashMap::from([(vec![0u8], b"OFF".into()), (vec![16u8], b"ON".into())]),
-            },
-            percent_mapping: None,
-        };
-        mapping
-            .add_pump("fountain", fountain, &spa, &mut mqtt)
-            .await?;
-        mapping.add_pump("first", first, &spa, &mut mqtt).await?;
-        mapping.add_pump("second", second, &spa, &mut mqtt).await?;
-        mapping.add_pump("third", third, &spa, &mut mqtt).await?;
+        if let Some(ref devices) = args.spa.devices {
+            let mut counter = 0;
+            for light in &devices.lights {
+                counter += 1;
+                mapping
+                    .add_light(&format!("light{counter}"), light.clone(), &spa, &mut mqtt)
+                    .await?;
+            }
+            counter = 0;
+            for pump in &devices.pumps {
+                counter += 1;
+                mapping
+                    .add_pump(&format!("pump{counter}"), pump.clone(), &spa, &mut mqtt)
+                    .await?;
+            }
+        }
         join_set.spawn(async move {
             loop {
                 mapping.tick().await?;

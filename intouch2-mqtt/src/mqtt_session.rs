@@ -15,8 +15,6 @@ use tokio::{
     time,
 };
 
-use crate::home_assistant;
-
 const CLIENT_ID: &str = "spa_client";
 
 pub enum MqttAuth<'a> {
@@ -221,19 +219,6 @@ impl Session {
                 },
             }
         }
-    }
-
-    pub async fn add_test_device(&mut self) -> Result<(), MqttError> {
-        let identifier = "01bath";
-        let unique_id = format!("light{identifier}");
-        let payload_device = home_assistant::ConfigureDevice {
-            identifiers: Box::new([identifier]),
-            name: "Spa bath",
-        };
-        let state_topic = self.topic("light", "first", Topic::State);
-        let config_topic = self.topic("light", "first", Topic::Config);
-        let command_topic = self.topic("light", "first", Topic::Set);
-        Ok(())
     }
 
     pub async fn send(&mut self, packet: Packet<'_>) -> Result<(), MqttError> {

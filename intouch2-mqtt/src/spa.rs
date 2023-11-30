@@ -1,9 +1,7 @@
 use std::{
-    backtrace::Backtrace,
     borrow::Cow,
     collections::HashMap,
-    net::SocketAddr,
-    ops::{Bound, Index, Range, RangeBounds},
+    ops::{Index, Range},
     sync::{
         atomic::{AtomicU8, Ordering},
         Arc,
@@ -12,30 +10,25 @@ use std::{
 };
 
 use intouch2::{
-    composer::compose_network_data,
     datas::GeckoDatas,
     generate_uuid,
-    object::{
-        package_data::{self, SetStatus},
-        NetworkPackage, NetworkPackageData, PackAction, StatusChange,
-    },
-    parser::{parse_network_data, ParseError},
-    ToStatic,
+    object::{package_data, NetworkPackage, NetworkPackageData, PackAction, StatusChange},
+    parser::ParseError,
 };
 use tokio::{
-    net::UdpSocket,
     select,
     sync::{self, Mutex},
     task::JoinSet,
     time::{self, timeout},
 };
 
-use crate::{port_forward::SpaPipe, unspecified_source_for_taget, WithBuffer};
+use crate::{port_forward::SpaPipe, WithBuffer};
 
 pub struct SpaConnection {
     pipe: Arc<SpaPipe>,
     src: Arc<[u8]>,
     dst: Arc<[u8]>,
+    name: Arc<[u8]>,
     ping_interval: Arc<Mutex<time::Interval>>,
     full_state_download_interval: Arc<Mutex<time::Interval>>,
     state: Arc<sync::Mutex<GeckoDatas>>,
@@ -150,6 +143,7 @@ impl SpaConnection {
                     );
                     break Ok(Self {
                         seq,
+                        name: name.into(),
                         pipe: pipe.into(),
                         src,
                         dst,
@@ -167,13 +161,11 @@ impl SpaConnection {
         Ok(spa_object)
     }
 
-    async fn tick(&self) {
-        let mut interval = self.ping_interval.lock().await;
-        interval.tick().await;
+    pub fn name(&self) -> &[u8] {
+        self.name.as_ref()
     }
 
     pub async fn recv<'a>(&self) -> Result<(), SpaError> {
-        let receiver = self.pipe.subscribe();
         let notify_dirty = Arc::new(tokio::sync::Notify::new());
         let gecko_data_len = u16::try_from(self.state.lock().await.len()).expect(
             "If this isn't u16, then the data types are incorrect, and we should not keep going",
@@ -380,35 +372,9 @@ impl SpaConnection {
                 }
             });
         }
-        let gecko_data = self.state.clone();
         while let Some(job) = jobs.join_next().await {
             job??;
         }
         Ok(())
-        // jobs.spawn(async { Ok(JobResult::StartRecv(receiver)) });
-        // jobs.spawn(async { Ok(JobResult::RequestState) });
-        // while let Some(job) = jobs.join_next().await {
-        //    match job?? {
-        //        JobResult::RequestState => {
-        //            let interval = self.full_state_download_interval.clone();
-
-        //        },
-        //        JobResult::Ping => {
-        //            jobs.spawn(async move {
-        //            });
-        //        }
-        //        JobResult::Recv(mut recv, NetworkPackage::Addressed { data:
-        // NetworkPackageData::Pong, .. }) | JobResult::StartRecv(mut recv) => {
-        // self.pings_since_last_pong.store(0, Ordering::Relaxed);
-        // jobs.spawn(async {                let new_data = recv.recv().await?;
-        //                Ok(JobResult::Recv(recv, new_data))
-        //            });
-        //        }
-        //        JobResult::Recv(_, data) => {
-        //            return Ok(data);
-        //        }
-        //    }
-        //}
-        // Err(SpaError::SpaConnectionLost)
     }
 }

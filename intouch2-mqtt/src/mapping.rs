@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
+use mqttrs::{Packet, Publish, QosPid};
 use serde::Deserialize;
 use tokio::task::JoinSet;
 
@@ -74,7 +74,7 @@ pub struct HardcodedMapping<'a> {
     jobs: JoinSet<Result<(), MappingError>>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct EnumMapping {
     pub address: u16,
     pub len: u16,
@@ -101,13 +101,13 @@ impl EnumMapping {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct PlainMapping {
     pub address: u16,
     pub len: u16,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct LightMapping<'a> {
     pub name: &'a str,
     pub onoff: EnumMapping,
@@ -115,7 +115,7 @@ pub struct LightMapping<'a> {
     pub effects: Option<EnumMapping>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct FanMapping<'a> {
     pub name: &'a str,
     pub state_mapping: EnumMapping,
@@ -292,7 +292,7 @@ impl HardcodedMapping<'_> {
         let command_topic = mqtt.topic("fan", &unique_id, Topic::Set);
         let config_topic = mqtt.topic("fan", &unique_id, Topic::Config);
         let (percent_state_topic, percent_command_topic): (Option<String>, Option<String>) =
-            if let Some(effects) = &mapping.percent_mapping {
+            if let Some(_) = &mapping.percent_mapping {
                 (
                     Some(mqtt.topic("fan", &format!("{unique_id}/percent"), Topic::State)),
                     Some(mqtt.topic("fan", &format!("{unique_id}/percent"), Topic::Set)),

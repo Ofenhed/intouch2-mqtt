@@ -1,7 +1,7 @@
 #[derive(serde::Serialize)]
 pub struct ConfigureDevice<'a> {
     pub identifiers: Box<[&'a str]>,
-    pub name: &'a str,
+    pub name: String,
 }
 
 #[derive(serde::Serialize)]

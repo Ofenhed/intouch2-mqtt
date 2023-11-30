@@ -67,6 +67,7 @@ pub struct Buffers<const COUNT: usize, T> {
 
 impl<const COUNT: usize, T> Buffers<COUNT, T> {
     pub fn new() -> Self {
+        #[allow(deprecated)]
         Self {
             bufs: unsafe { std::mem::uninitialized() },
             size: 0,

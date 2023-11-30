@@ -107,8 +107,6 @@ impl ToStatic for StatusChange<'_> {
     }
 }
 
-struct Tag;
-
 pub trait ActualType {
     type Type;
 }
@@ -426,7 +424,7 @@ macro_rules! gen_packages {
       }
       impl<$($struct_life)? $($trait_life)?> $crate::object::DatasContent<$($struct_life)? $($trait_life)?> for $struct<$($struct_life)?> {
         fn parse(input: & $($struct_life)? [u8]) -> nom::IResult<& $($struct_life)? [u8], Self> {
-            #[allow(unused_import)]
+            #[allow(unused_imports)]
             use nom::Parser;
 
             $( let (input, $var) = $(
