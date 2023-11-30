@@ -1,4 +1,4 @@
-FROM rust:latest as base
+FROM rustlang/rust:nightly as base
 ADD . .
 RUN cargo build --bin intouch2-mqtt --release
 
