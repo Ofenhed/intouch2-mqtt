@@ -1,4 +1,3 @@
-#![feature(concat_bytes)]
 use std::borrow::Cow;
 
 use rand::*;
