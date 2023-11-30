@@ -186,11 +186,21 @@ impl Command<'_> {
     fn get() -> &'static Command<'static> {
         static ARGS: OnceLock<Command> = OnceLock::new();
         ARGS.get_or_init(|| {
+            let config_file = "/data/options.yaml";
             if std::env::args_os().len() <= 1 {
-                todo!("Read args from /data/options.yaml");
-            } else {
-                Command::parse()
+                if let Ok(config_file) = std::fs::read(config_file) {
+                    let loaded_config = Box::new(config_file);
+                    let yaml = loaded_config.leak();
+                    match serde_yaml::from_slice::<Command>(yaml) {
+                        Ok(config) => return config,
+                        Err(err) => {
+                            eprintln!("Could not read config: {err}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
             }
+            Command::parse()
         })
     }
 }
