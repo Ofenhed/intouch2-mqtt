@@ -1,11 +1,6 @@
 FROM rustlang/rust:nightly as base
-RUN cargo install cargo-build-dependencies
-ADD Cargo.toml Cargo.lock ./
-RUN mkdir intouch2 intouch2-mqtt
-ADD intouch2/Cargo.toml intouch2/Cargo.toml
-ADD intouch2-mqtt/Cargo.toml intouch2-mqtt/Cargo.toml
-RUN cargo build-dependencies --release
-ADD intouch2 intouch2-mqtt ./
+ADD . .
+RUN cargo build -p intouch2 --release
 RUN cargo build --bin intouch2-mqtt --release
 
 ARG BUILD_FROM
