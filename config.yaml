@@ -10,9 +10,6 @@ arch:
   - i386
 host_network: true
 stage: experimental
-options:
-  spa_name: "My Spa"
-  forward: false
 schema:
   spa_target: str
   spa_name: str
