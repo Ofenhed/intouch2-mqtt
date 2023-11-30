@@ -1,4 +1,5 @@
 FROM rust:latest as base
+ADD . .
 RUN cargo build --bin intouch2-mqtt --release
 
 ARG BUILD_FROM
