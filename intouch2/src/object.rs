@@ -45,7 +45,7 @@ pub trait TailingDatasContent<'a>:
 
     fn from(tail: &'a [u8]) -> Self;
 
-    fn into(&self) -> &'a [u8];
+    fn into(&'_ self) -> &'a [u8];
 }
 
 use dispatch::{DatasType, Simple, Tailing};
@@ -79,7 +79,8 @@ disjoint_impls! {
     }
 
     fn compose(&self) -> Cow<'a, [u8]> {
-      [Self::VERB, A::into(&self)].concat().into()
+      let parts: &[&'a [u8]] = &[Self::VERB, A::into(&self)];
+      Cow::Owned(parts.concat())
     }
   }
 }
@@ -210,14 +211,15 @@ macro_rules! gen_packages {
   (DERIVE_CLONE_FOR_STATIC) => {
     #[derive(Clone)]
   };
+  // TODO: Remove FINISH_BUILD_STRUCT_ARGS specialization
   (BUILD_STRUCT_ARGS $enum:ident $struct_lifetime:lifetime $(#[$meta:meta])* $struct:ident { $($current:tt)* } => ) => {
       $crate::gen_packages!{ FINISH_BUILD_STRUCT_ARGS $enum $struct_lifetime $(#[$meta])* $struct { $($current)* } }
   };
   (BUILD_STRUCT_ARGS $enum:ident $(#[$meta:meta])* $struct:ident { $($current:tt)* } => ) => {
-      $crate::gen_packages!{ FINISH_BUILD_STRUCT_ARGS $enum #[derive(Clone)] $struct $(#[$meta])* { $($current)* } }
+      $crate::gen_packages!{ FINISH_BUILD_STRUCT_ARGS $enum $struct $(#[$meta])* { $($current)* } }
   };
   (FINISH_BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* }) => {
-      #[derive(Debug, PartialEq, Eq)]
+      #[derive(Debug, PartialEq, Eq, Clone)]
       $(#[$meta])*
       pub struct $struct $(<$struct_lifetime>)? {
           $($current)*
@@ -470,9 +472,9 @@ macro_rules! gen_packages {
   };
 
   (WITH_TYPES_LIST $enum:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(#[$meta:meta])* $tailing:ident ( $verb:literal : Tailing ) $(,$($rest:tt)*)?) => {
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, PartialEq, Eq, Clone)]
     $(#[$meta])*
-    pub struct $tailing<'a>(pub &'a [u8]);
+    pub struct $tailing<'a>(pub std::borrow::Cow<'a, [u8]>);
     impl $crate :: object :: dispatch :: DatasType for $tailing<'_> {
       type Group = $crate :: object :: dispatch :: Tailing;
     }
@@ -482,20 +484,28 @@ macro_rules! gen_packages {
         Self(tail.into())
       }
 
-      fn into(&self) -> &'a [u8] {
-        self.0
+      fn into(&'_ self) -> &'a [u8] {
+        // TODO: Figure out why this lifetime screws up
+        unsafe { std::mem::transmute(&*self.0) }
       }
     }
     impl std::ops::Deref for $tailing<'_> {
         type Target = [u8];
 
         fn deref(&self) -> &[u8] {
-            self.0
+            self.0.as_ref()
+        }
+    }
+    impl $crate::ToStatic for $tailing<'_> {
+        type Static = $tailing<'static>;
+
+        fn to_static(&self) -> Self::Static {
+            $tailing($crate::ToStatic::to_static(&self.0))
         }
     }
     impl<'a> From<&$tailing<'a>> for $tailing<'static> {
-        fn from(_other: &$tailing<'a>) -> $tailing<'static> {
-            todo!()
+        fn from(other: &$tailing<'a>) -> $tailing<'static> {
+            $crate::ToStatic::to_static(other)
         }
     }
     impl<'a> From<$tailing<'a>> for $enum<'a> {
@@ -531,7 +541,7 @@ macro_rules! gen_packages {
     $crate::gen_packages!{ WITH_TYPES_LIST $enum [$($const)* $simple] [$($($life)? $arg)*] => $($($rest)*)? }
   };
   (WITH_TYPES_LIST $enum_name:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(,)?) => {
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, PartialEq, Eq, Clone)]
     pub enum $enum_name<'a> {
       $($const,)*
       $($arg($arg$(<$life>)?),)*
@@ -820,7 +830,7 @@ pub enum ErrorType {
 //    }
 //}
 
-#[derive(Eq, Debug, PartialEq)]
+#[derive(Eq, Debug, PartialEq, Clone)]
 pub enum NetworkPackage<'a> {
     Addressed {
         src: Option<Cow<'a, [u8]>>,
@@ -847,14 +857,14 @@ impl std::fmt::Display for NetworkPackage<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NetworkPackage::Addressed { src, dst, data } => f.write_fmt(format_args!(
-                "Addressed({}, {}, {:?})",
+                "Addressed({}, {}, {})",
                 src.as_ref()
                     .map(|x| String::from_utf8_lossy(&x))
                     .unwrap_or("NULL".into()),
                 dst.as_ref()
                     .map(|x| String::from_utf8_lossy(&x))
                     .unwrap_or("NULL".into()),
-                data
+                data.display()
             )),
             NetworkPackage::Hello(msg) => {
                 f.write_fmt(format_args!("Hello({})", String::from_utf8_lossy(msg)))

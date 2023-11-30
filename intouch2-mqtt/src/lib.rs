@@ -1,5 +1,8 @@
 #![feature(sync_unsafe_cell)]
 
+pub mod home_assistant;
+pub mod mapping;
+pub mod mqtt_session;
 pub mod port_forward;
 pub mod port_forward_mapping;
 pub mod spa;

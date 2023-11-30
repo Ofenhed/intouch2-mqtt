@@ -204,13 +204,14 @@ impl<T: Send + Sync> ForwardMapping<T> {
             context: Some(context),
         }));
         self.ids.insert(id, info.clone());
-        match self.addrs.entry(addr) {
+        let reply = match self.addrs.entry(addr) {
             hash_map::Entry::Occupied(mut entry) => {
                 entry.insert(info);
                 unpack_owned_cell(entry.get().clone())
             }
             hash_map::Entry::Vacant(entry) => unpack_cell(entry.insert(info)),
-        }
+        };
+        reply
     }
     pub fn remove_id(&mut self, id: &PeerIdType) -> Option<T> {
         self._remove_id(id).map(|x| x.0)
@@ -241,7 +242,7 @@ impl<T: Send + Sync> ForwardMapping<T> {
             let Some(id) = mapping.id.upgrade() else {
                 unreachable!("id and addr are treated as inseperable")
             };
-            self.addrs.remove(&addr);
+            self.ids.remove(&id);
             let context = std::mem::take(&mut mapping.context)
                 .expect("This invalidates the mapping. It was valid before, so context is Some.");
             Some((context, addr, id))

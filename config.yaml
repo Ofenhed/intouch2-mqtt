@@ -14,10 +14,13 @@ options:
   spa_name: "My Spa"
   forward: false
 schema:
-  spa_host: str
+  spa_target: str
   spa_name: str
-  forward_port: "int(1, 65535)?"
-  forward_listen_ip: "str?"
-  mqtt_target: "str?"
-  mqtt_user: "str?"
-  mqtt_password: "password?"
+  forward_port: int(1, 65535)?
+  forward_listen_ip: str?
+  mqtt_target: str?
+  mqtt_username: str?
+  mqtt_password: password?
+  home_assistant_discovery_topic: str?
+  udp_timeout: int(1,600)?
+  handshake_timeout: int(1, 60)?

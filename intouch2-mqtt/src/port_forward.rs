@@ -1,5 +1,8 @@
 use intouch2::{
-    composer::compose_network_data, object::NetworkPackage, parser::parse_network_data,
+    composer::compose_network_data,
+    object::{NetworkPackage, NetworkPackageData},
+    parser::parse_network_data,
+    ToStatic,
 };
 use std::{
     borrow::Cow,
@@ -34,6 +37,8 @@ pub enum PortForwardError {
     Channel(#[from] tokio::sync::mpsc::error::SendError<Box<[u8]>>),
     #[error("Spa Hello Timeout")]
     SpaTimeout,
+    #[error("Pipe send error: {0}")]
+    PipeSendFailed(#[from] broadcast::error::SendError<NetworkPackage<'static>>),
     #[error("Invalid spa name: {}", String::from_utf8_lossy(.0))]
     InvalidSpaName(Box<[u8]>),
 }
@@ -43,7 +48,40 @@ const NET_BUFFER_SIZE: usize = 4096;
 #[derive(Debug)]
 pub struct PackagePipe {
     pub rx: mpsc::Receiver<NetworkPackage<'static>>,
-    pub tx: broadcast::Sender<NetworkPackage<'static>>,
+    pub tx: Arc<broadcast::Sender<NetworkPackage<'static>>>,
+}
+
+pub struct SpaPipe {
+    broadcast_sender: Arc<broadcast::Sender<NetworkPackage<'static>>>,
+    pub tx: mpsc::Sender<NetworkPackage<'static>>,
+}
+
+impl SpaPipe {
+    pub fn subscribe(&self) -> broadcast::Receiver<NetworkPackage<'static>> {
+        self.broadcast_sender.subscribe()
+    }
+}
+
+pub struct FullPackagePipe {
+    pub forwarder: PackagePipe,
+    pub spa: SpaPipe,
+}
+
+impl FullPackagePipe {
+    pub fn new() -> Self {
+        let broadcast_sender = Arc::new(broadcast::Sender::new(30));
+        let (mtx, mrx) = mpsc::channel(30);
+        FullPackagePipe {
+            spa: SpaPipe {
+                broadcast_sender: broadcast_sender.clone(),
+                tx: mtx,
+            },
+            forwarder: PackagePipe {
+                tx: broadcast_sender,
+                rx: mrx,
+            },
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -102,7 +140,7 @@ impl PortForward {
             (None, None)
         };
         let (send_pipe, recv_pipe) = if let Some(pipes) = self.local_connection {
-            (Some(pipes.tx), Some(Mutex::new(pipes.rx)))
+            (Some(pipes.tx), Some(pipes.rx))
         } else {
             (None, None)
         };
@@ -158,6 +196,11 @@ impl PortForward {
                 data: Vec<u8>,
                 recv_sock: Option<NoClone<UdpSocket>>,
             },
+            FromPipe {
+                data: NetworkPackage<'static>,
+                recv_pipe: Option<mpsc::Receiver<NetworkPackage<'static>>>,
+            },
+            PipeDied,
             Timeout {
                 client_addr: ForwardAddr,
             },
@@ -167,9 +210,9 @@ impl PortForward {
             SpawnClientListener {
                 recv_sock: Option<NoClone<UdpSocket>>,
             },
-            // SpawnPipeListener {
-            //    rx: Option<NoClone<
-            //},
+            SpawnPipeListener {
+                recv_pipe: Option<mpsc::Receiver<NetworkPackage<'static>>>,
+            },
             SendCompleted {
                 buf: Option<Vec<u8>>,
             },
@@ -187,6 +230,13 @@ impl PortForward {
                 })
             });
         }
+        if let Some(recv_pipe) = recv_pipe {
+            workers.spawn(async {
+                Ok(SocketData::SpawnPipeListener {
+                    recv_pipe: Some(recv_pipe),
+                })
+            });
+        }
         let mut forwards: ForwardMapping<()> = Default::default();
         let mut buffers: Buffers<20, Vec<u8>> = Buffers::new();
 
@@ -197,8 +247,8 @@ impl PortForward {
                     SocketData::SendCompleted { buf } => {
                         if let Some(buf) = take(buf) {
                             buffers.release(buf);
-                            continue;
                         }
+                        continue;
                     }
                     SocketData::FromClient { recv_sock, .. }
                     | SocketData::SpawnClientListener { recv_sock } => {
@@ -241,24 +291,74 @@ impl PortForward {
                             })
                         });
                     }
+                    SocketData::FromPipe { recv_pipe, .. }
+                    | SocketData::SpawnPipeListener { recv_pipe } => {
+                        let Some(mut recv_pipe) = std::mem::take(recv_pipe) else {
+                            unreachable!(
+                                "recv_pipe will always be set when FromPipe or SpawnPipeListener is returned"
+                                )
+                        };
+                        workers.spawn(async {
+                            if let Some(data) = recv_pipe.recv().await {
+                                Ok(SocketData::FromPipe {
+                                    recv_pipe: Some(recv_pipe),
+                                    data,
+                                })
+                            } else {
+                                Ok(SocketData::PipeDied)
+                            }
+                        });
+                    }
                     _ => (),
                 }
                 match job_result {
+                    SocketData::FromPipe { data, .. } => match data {
+                        NetworkPackage::Addressed {
+                            src: Some(_),
+                            data: ref package,
+                            ..
+                        } => {
+                            if self.dump_traffic {
+                                eprintln!("Self -> {}", package.display());
+                            }
+                            let send_spa = send_spa.clone();
+                            workers.spawn(async move {
+                                send_spa
+                                    .lock()
+                                    .await
+                                    .send(&compose_network_data(&data))
+                                    .await?;
+                                Ok(SocketData::SendCompleted { buf: None })
+                            });
+                        }
+                        NetworkPackage::Hello(id) => {
+                            forwards.insert(ForwardAddr::Pipe, id, ());
+                            let Some(send_pipe) = &send_pipe else {
+                                unreachable!("Pipe must be set to end up here")
+                            };
+                            send_pipe.send(NetworkPackage::Hello(spa_id.clone().into()))?;
+                        }
+                        invalid_package => {
+                            eprintln!("Invalid package from pipe: {invalid_package}")
+                        }
+                    },
                     SocketData::FromClient {
                         source_addr, data, ..
                     } => {
                         match parse_network_data(&data) {
-                            Ok(NetworkPackage::Addressed {
-                                src: Some(src),
-                                dst: Some(dst),
-                                data: content,
-                                ..
-                            }) if dst[..] == spa_hello.id[..] => {
+                            Ok(
+                                ref package @ NetworkPackage::Addressed {
+                                    src: Some(ref src),
+                                    dst: Some(ref dst),
+                                    data: ref content,
+                                    ..
+                                },
+                            ) if dst[..] == spa_hello.id[..] => {
                                 if self.dump_traffic {
                                     eprintln!("{source_addr} -> {}", content.display());
                                 }
                                 let count_before = forwards.len();
-                                forwards.insert(ForwardAddr::Socket(source_addr), &*src, ());
+                                forwards.insert(ForwardAddr::Socket(source_addr), &**src, ());
                                 if self.verbose && count_before != forwards.len() {
                                     eprintln!(
                                         "New client {} at {}",
@@ -267,8 +367,20 @@ impl PortForward {
                                     );
                                 }
                                 let send_spa = send_spa.clone();
+                                let send_pipe =
+                                    if let (Some(pipe), NetworkPackageData::SetStatus { .. }) =
+                                        (&send_pipe, content)
+                                    {
+                                        Some((pipe.clone(), package.to_static()))
+                                    } else {
+                                        None
+                                    };
                                 workers.spawn(async move {
                                     send_spa.lock().await.send(&data).await?;
+                                    if let Some((send_pipe, content)) = send_pipe {
+                                        eprintln!("Forwarding set command");
+                                        send_pipe.send(content)?;
+                                    }
                                     Ok(SocketData::SendCompleted { buf: Some(data) })
                                 });
                             }
@@ -308,14 +420,29 @@ impl PortForward {
                         }
                     }
                     SocketData::FromSpa { data, .. } => match parse_network_data(&data) {
-                        Ok(NetworkPackage::Addressed {
-                            dst: Some(dst),
-                            data: content,
-                            ..
-                        }) => {
+                        Ok(
+                            ref package @ NetworkPackage::Addressed {
+                                dst: Some(ref dst),
+                                data: ref content,
+                                ..
+                            },
+                        ) => {
                             if let Some(forward_info) = forwards.get_id(&dst) {
                                 match *forward_info.addr() {
-                                    ForwardAddr::Pipe => todo!(),
+                                    ForwardAddr::Pipe => {
+                                        let Some(pipe) = &send_pipe else {
+                                            unreachable!()
+                                        };
+                                        let sender = pipe.clone();
+                                        if self.dump_traffic {
+                                            eprintln!("Self <- {}", content.display());
+                                        }
+                                        let package = package.to_static();
+                                        workers.spawn(async move {
+                                            sender.send(package)?;
+                                            Ok(SocketData::SendCompleted { buf: Some(data) })
+                                        });
+                                    }
                                     ForwardAddr::Socket(addr) => {
                                         let Some(send_clients) = &send_clients else {
                                             unreachable!("How can you send to clients if there are no clients?")
@@ -324,12 +451,24 @@ impl PortForward {
                                             eprintln!("{addr} <- {}", content.display());
                                         }
                                         let send_clients = send_clients.clone();
+                                        let sender = if let (
+                                            Some(sender),
+                                            NetworkPackageData::PushStatus { .. },
+                                        ) = (&send_pipe, content)
+                                        {
+                                            Some((sender.clone(), package.to_static()))
+                                        } else {
+                                            None
+                                        };
                                         workers.spawn(async move {
                                             send_clients
                                                 .lock()
                                                 .await
                                                 .send_to(data.as_ref(), addr)
                                                 .await?;
+                                            if let Some((sender, package)) = sender {
+                                                sender.send(package)?;
+                                            }
                                             Ok(SocketData::SendCompleted { buf: Some(data) })
                                         });
                                     }
@@ -367,7 +506,13 @@ impl PortForward {
                         forwards.remove_addr(&client_addr);
                     }
                     SocketData::SpawnClientListener { .. }
-                    | SocketData::SpawnSpaListener { .. } => (),
+                    | SocketData::SpawnSpaListener { .. }
+                    | SocketData::SpawnPipeListener { .. } => (),
+                    SocketData::PipeDied => {
+                        if self.verbose {
+                            eprintln!("Internal Spa pipe disconnected")
+                        }
+                    }
                     SocketData::SendCompleted { .. } => {
                         unreachable!("SendCompleted is filtered out above")
                     }
