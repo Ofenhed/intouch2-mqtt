@@ -4,7 +4,7 @@ RUN apt update -qq && apt install -y -qq --no-install-recommends \
 	musl-tools
 
 ARG BUILD_ARCH
-RUN rustup set profile minimal && rustup target add ${BUILD_ARCH}-unknown-linux-musl && rustup default ${BUILD_ARCH}-unknown-linux-musl
+RUN rustup set profile minimal && rustup target add ${BUILD_ARCH}-unknown-linux-musl && rustup default ${BUILD_ARCH}-nightly-unknown-linux-musl
 
 RUN mkdir /build/
 ADD intouch2 /build/intouch2
