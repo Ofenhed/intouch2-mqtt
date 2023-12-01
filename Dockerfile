@@ -5,7 +5,7 @@ RUN apk add --no-cache musl-dev
 
 RUN mkdir /build/
 WORKDIR /build/
-ADD Cargo.lock intouch2 /build/
+COPY Cargo.lock intouch2/ /build/
 RUN printf '\n\
 [workspace]\n\
 members = [\n\
@@ -13,7 +13,7 @@ members = [\n\
 ]' > /build/Cargo.toml
 RUN cargo build --release
 
-ADD Cargo.toml intouch-mqtt /build/
+COPY Cargo.toml intouch-mqtt/ /build/
 RUN cargo build --bin intouch2-mqtt --release
 
 FROM ${BUILD_FROM}
