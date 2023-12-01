@@ -12,5 +12,5 @@ ADD intouch2-mqtt /build/intouch2-mqtt
 RUN cargo build --bin intouch2-mqtt --release
 
 FROM ${BUILD_FROM}
-COPY --from=base /build/target/release/intouch2-mqtt /bin/intouch2-mqtt
-CMD [ "/bin/intouch2-mqtt" ]
+COPY --from=base /build/target/release/intouch2-mqtt /intouch2-mqtt
+CMD [ "/intouch2-mqtt" ]
