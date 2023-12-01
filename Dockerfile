@@ -1,11 +1,11 @@
 ARG BUILD_FROM
 FROM rustlang/rust:nightly as base
 
-# RUN apt update -qq && apt install -y -qq --no-install-recommends \
-# 	musl-tools
-#
-# ARG BUILD_ARCH
-# RUN rustup set profile minimal && rustup target add ${BUILD_ARCH}-unknown-linux-musl && rustup default nightly-${BUILD_ARCH}-unknown-linux-musl
+RUN apt update -qq && apt install -y -qq --no-install-recommends \
+	musl-tools
+
+ARG BUILD_ARCH
+RUN rustup set profile minimal && rustup target add ${BUILD_ARCH}-unknown-linux-musl && rustup default nightly-${BUILD_ARCH}-unknown-linux-musl
 
 RUN mkdir /build/
 ADD intouch2 /build/intouch2
