@@ -1,6 +1,6 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.60"
+version: "0.1.61"
 slug: "intouch2-mqtt"
 init: false
 arch:
@@ -13,23 +13,22 @@ stage: experimental
 services:
   - "mqtt:want"
 ingress: false
-schema: false
-#schema:
-#  spa:
-#    spa_target: str
-#    unique_id: str
-#    memory_size: int(1,65535)
-#    udp_timeout: int(1,600)?
-#    handshake_timeout: int(1,60)?
-#    forward:
-#      forward_port: int(1,65535)?
-#      forward_listen_ip: str?
-#  verbose: bool?
-#  dump_traffic: bool?
-#  memory_changes_topic: str?
-#  mqtt:
-#    target: str?
-#    discovery_topic: str?
-#    auth:
-#      username: str?
-#      password: password?
+schema:
+  spa:
+    target: str
+    unique_id: str
+    memory_size: int(1,65535)
+    udp_timeout: int(1,600)?
+    handshake_timeout: int(1,60)?
+    forward:
+      forward_port: int(1,65535)
+      forward_listen_ip: str
+  verbose: bool?
+  dump_traffic: bool?
+  memory_changes_topic: str?
+  mqtt:
+    target: str?
+    discovery_topic: str?
+    auth:
+      username: str?
+      password: password?
