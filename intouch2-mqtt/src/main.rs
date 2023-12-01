@@ -45,6 +45,10 @@ mod default_values {
     pub fn discovery_topic() -> Arc<str> {
         "homeassistant".into()
     }
+
+    pub fn r#false() -> bool {
+        false
+    }
 }
 
 #[derive(clap::Args, Deserialize)]
@@ -174,8 +178,10 @@ struct Command<'a> {
     #[serde(flatten)]
     #[command(flatten)]
     mqtt: MqttOptions,
+    #[serde(default = "default_values::r#false")]
     #[arg(short, long)]
     verbose: bool,
+    #[serde(default = "default_values::r#false")]
     #[arg(short, long)]
     dump_traffic: bool,
     #[arg(long)]
