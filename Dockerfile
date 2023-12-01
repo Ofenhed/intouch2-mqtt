@@ -1,6 +1,7 @@
 ARG BUILD_FROM
 FROM rust:alpine as base
 RUN rustup toolchain install nightly && rustup default nightly
+RUN apk add --no-cache musl-dev
 
 RUN mkdir /build/
 ADD intouch2 /build/intouch2
@@ -14,6 +15,6 @@ ADD intouch2-mqtt /build/intouch2-mqtt
 RUN cargo build --bin intouch2-mqtt --release
 
 FROM ${BUILD_FROM}
-# RUN apk add libgcc
+# RUN apk add --no-cache libgcc
 COPY --from=base /build/target/release/intouch2-mqtt /bin/intouch2-mqtt
 CMD [ "/bin/intouch2-mqtt" ]
