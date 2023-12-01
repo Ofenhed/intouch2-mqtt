@@ -14,5 +14,5 @@ COPY intouch2-mqtt ./intouch2-mqtt
 RUN cargo build --bin intouch2-mqtt
 
 FROM ${BUILD_FROM}
-COPY --from=base /build/target/release/intouch2-mqtt /bin/intouch2-mqtt
+COPY --from=base /build/target/debug/intouch2-mqtt /bin/intouch2-mqtt
 CMD [ "/bin/intouch2-mqtt" ]
