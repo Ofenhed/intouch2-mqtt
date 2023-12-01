@@ -6,10 +6,10 @@ RUN apk add --no-cache musl-dev
 RUN mkdir /build/
 WORKDIR /build/
 ADD Cargo.lock intouch2 /build/
-RUN echo '\
-[workspace]\
-members = [\
-  "intouch2",\
+RUN printf '\n\
+[workspace]\n\
+members = [\n\
+  "intouch2",\n\
 ]' > /build/Cargo.toml
 RUN cargo build --release
 
