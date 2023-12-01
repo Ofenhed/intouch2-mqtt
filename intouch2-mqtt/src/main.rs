@@ -233,6 +233,12 @@ pub enum Error {
 async fn main() -> anyhow::Result<()> {
     let args = Command::get();
     let mqtt = if let Some(target) = &args.mqtt.target {
+        let mut mqtt_addrs = net::lookup_host(target.as_ref()).await?;
+        let mqtt_addr = if let Some(addr) = mqtt_addrs.next() {
+            Ok(addr)
+        } else {
+            Err(Error::NoDnsMatch(target.clone()))
+        }?;
         let auth = if let Some(auth) = &args.mqtt.auth {
             MqttAuth::Simple {
                 username: &auth.username,
@@ -243,7 +249,7 @@ async fn main() -> anyhow::Result<()> {
         };
         let session = MqttSession {
             discovery_topic: args.mqtt.prefix.clone(),
-            target: target.parse()?,
+            target: mqtt_addr,
             auth,
             keep_alive: 30,
         };
