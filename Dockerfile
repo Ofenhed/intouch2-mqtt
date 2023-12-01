@@ -10,6 +10,7 @@ RUN mkdir /build/
 ADD intouch2 /build/intouch2
 ADD Cargo.lock /build/intouch2/
 WORKDIR /build/intouch2/
+ENV RUSTFLAGS="-Ctarget-feature=-crt-static"
 RUN cargo build --release && mv /build/intouch2/target /build/intouch2/Cargo.lock /build/
 
 WORKDIR /build/
