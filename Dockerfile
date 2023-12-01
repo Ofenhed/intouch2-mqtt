@@ -1,3 +1,4 @@
+ARG BUILD_FROM
 FROM rustlang/rust:nightly as base
 
 RUN mkdir /build/
@@ -10,6 +11,6 @@ ADD Cargo.toml /build/
 ADD intouch2-mqtt /build/intouch2-mqtt
 RUN cargo build --bin intouch2-mqtt --release
 
-FROM alpine:latest
+FROM ${BUILD_FROM}
 COPY --from=base /build/target/release/intouch2-mqtt /bin/intouch2-mqtt
 CMD [ "/bin/intouch2-mqtt" ]
