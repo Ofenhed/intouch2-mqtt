@@ -170,6 +170,7 @@ struct MqttUser {
 }
 
 #[derive(Parser, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 struct Command<'a> {
     #[serde(flatten)]
     #[serde(borrow = "'a")]
