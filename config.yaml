@@ -1,7 +1,8 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.19"
+version: "0.1.20"
 slug: "intouch2-mqtt"
+init: false
 arch:
   - armhf
   - armv7
