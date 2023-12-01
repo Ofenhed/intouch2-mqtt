@@ -1,11 +1,18 @@
 ARG BUILD_FROM
+ARG BUILD_ARCH
 FROM rustlang/rust:nightly as base
+
+RUN apt update -qq && apt install -y -qq --no-install-recommends \
+	musl-tools
+
+RUN rustup set profile minimal && rustup target add ${BUILD_ARCH}-unknown-linux-musl && rustup default ${BUILD_ARCH}-unknown-linux-musl
 
 RUN mkdir /build/
 ADD intouch2 /build/intouch2
 ADD Cargo.lock /build/intouch2/
 WORKDIR /build/intouch2/
 RUN cargo build --release && mv /build/intouch2/target /build/intouch2/Cargo.lock /build/
+
 WORKDIR /build/
 ADD Cargo.toml /build/
 ADD intouch2-mqtt /build/intouch2-mqtt
