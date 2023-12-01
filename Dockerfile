@@ -8,10 +8,10 @@ WORKDIR /build/
 COPY Cargo.lock Cargo.toml ./
 RUN cargo new --lib intouch2-mqtt
 COPY intouch2 ./intouch2
-RUN cargo build --release
+RUN cargo build
 
 COPY intouch2-mqtt ./intouch2-mqtt
-RUN cargo build --bin intouch2-mqtt --release
+RUN cargo build --bin intouch2-mqtt
 
 FROM ${BUILD_FROM}
 COPY --from=base /build/target/release/intouch2-mqtt /bin/intouch2-mqtt
