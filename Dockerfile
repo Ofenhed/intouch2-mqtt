@@ -1,17 +1,11 @@
 ARG BUILD_FROM
-FROM rustlang/rust:nightly as base
-
-RUN apt update -qq && apt install -y -qq --no-install-recommends \
-	musl-tools
-
-ARG BUILD_ARCH
-RUN rustup set profile minimal && rustup target add ${BUILD_ARCH}-unknown-linux-musl && rustup default nightly-${BUILD_ARCH}-unknown-linux-musl
+FROM rust:alpine as base
+RUN rustup toolchain install nightly && rustup default nightly
 
 RUN mkdir /build/
 ADD intouch2 /build/intouch2
 ADD Cargo.lock /build/intouch2/
 WORKDIR /build/intouch2/
-ENV RUSTFLAGS="-Ctarget-feature=-crt-static"
 RUN cargo build --release && mv /build/intouch2/target /build/intouch2/Cargo.lock /build/
 
 WORKDIR /build/
