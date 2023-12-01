@@ -1,6 +1,6 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.48"
+version: "0.1.49"
 slug: "intouch2-mqtt"
 init: false
 arch:
@@ -9,7 +9,6 @@ arch:
   - aarch64
   - amd64
   - i386
-host_network: true
 stage: experimental
 services:
   - "mqtt:need"
