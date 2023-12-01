@@ -4,17 +4,19 @@ RUN rustup toolchain install nightly && rustup default nightly
 RUN apk add --no-cache musl-dev
 
 RUN mkdir /build/
-ADD intouch2 /build/intouch2
-ADD Cargo.lock /build/intouch2/
-WORKDIR /build/intouch2/
-RUN cargo build --release && mv /build/intouch2/target /build/intouch2/Cargo.lock /build/
-
 WORKDIR /build/
-ADD Cargo.toml /build/
-ADD intouch2-mqtt /build/intouch2-mqtt
+ADD Cargo.lock intouch2 /build/
+COPY <<EOF Cargo.toml
+[workspace]
+members = [
+  "intouch2",
+]
+EOF
+RUN cargo build --release
+
+ADD Cargo.toml intouch-mqtt /build/
 RUN cargo build --bin intouch2-mqtt --release
 
 FROM ${BUILD_FROM}
-# RUN apk add --no-cache libgcc
 COPY --from=base /build/target/release/intouch2-mqtt /bin/intouch2-mqtt
 CMD [ "/bin/intouch2-mqtt" ]
