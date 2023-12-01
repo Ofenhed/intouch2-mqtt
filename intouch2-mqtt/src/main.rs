@@ -186,12 +186,12 @@ impl Command<'_> {
     fn get() -> &'static Command<'static> {
         static ARGS: OnceLock<Command> = OnceLock::new();
         ARGS.get_or_init(|| {
-            let config_file = "/data/options.yaml";
+            let config_file = "/data/options.json";
             if std::env::args_os().len() <= 1 {
                 if let Ok(config_file) = std::fs::read(config_file) {
                     let loaded_config = Box::new(config_file);
-                    let yaml = loaded_config.leak();
-                    match serde_yaml::from_slice::<Command>(yaml) {
+                    let json = loaded_config.leak();
+                    match serde_json::from_slice::<Command>(json) {
                         Ok(config) => return config,
                         Err(err) => {
                             eprintln!("Could not read config: {err}");
