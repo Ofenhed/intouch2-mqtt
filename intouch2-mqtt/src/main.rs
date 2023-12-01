@@ -53,7 +53,6 @@ mod default_values {
 
 #[derive(clap::Args, Debug, Deserialize)]
 struct SpaForward {
-    #[serde(rename = "forward_listen_ip")]
     #[arg(
         long = "spa-forward-listen-ip",
         id = "spa-forward-listen-ip",
@@ -61,7 +60,7 @@ struct SpaForward {
         required = false
     )]
     listen_ip: IpAddr,
-    #[serde(rename = "forward_listen_port", default = "default_values::spa_port")]
+    #[serde(default = "default_values::spa_port")]
     #[arg(
         long = "spa-forward-listen-port",
         id = "spa-forward-listen-port",
@@ -73,10 +72,9 @@ struct SpaForward {
 
 #[derive(clap::Args, Debug, Deserialize)]
 struct SpaOptions<'a> {
-    #[serde(rename = "spa_target")]
     #[arg(long = "spa-target", id = "spa-target")]
     target: Arc<str>,
-    #[serde(rename = "spa_unique_id", default = "default_values::spa_name")]
+    #[serde(default = "default_values::spa_name")]
     #[arg(
         default_value = "spa_pool",
         short = 'n',
@@ -86,12 +84,10 @@ struct SpaOptions<'a> {
     )]
     unique_id: Arc<str>,
     #[arg(long = "spa-memory-size", id = "spa-memory-size")]
-    #[serde(rename = "spa_memory_size")]
     memory_size: usize,
-    #[serde(flatten)]
     #[command(flatten)]
     forward: Option<SpaForward>,
-    #[serde(rename = "udp_timeout", default = "default_values::udp_timeout")]
+    #[serde(default = "default_values::udp_timeout")]
     #[arg(
         long = "spa-timeout",
         id = "spa-timeout",
@@ -100,7 +96,6 @@ struct SpaOptions<'a> {
     )]
     udp_timeout: u16,
     #[serde(
-        rename = "handshake_timeout",
         default = "default_values::handshake_timeout"
     )]
     #[arg(
@@ -111,7 +106,7 @@ struct SpaOptions<'a> {
     )]
     handshake_timeout: u16,
     #[arg(skip)]
-    #[serde(borrow = "'a", flatten)]
+    #[serde(borrow = "'a")]
     devices: Option<SpaDevices<'a>>,
 }
 
@@ -125,11 +120,9 @@ struct SpaDevices<'a> {
 
 #[derive(clap::Args, Debug, Deserialize)]
 struct MqttOptions {
-    #[serde(rename = "mqtt_target")]
     #[arg(long = "mqtt-target", id = "mqtt-target")]
     target: Option<Arc<str>>,
     #[serde(
-        rename = "home_assistant_discovery_topic",
         default = "default_values::discovery_topic"
     )]
     #[arg(
@@ -137,15 +130,13 @@ struct MqttOptions {
         id = "discovery-topic",
         default_value = "homeassistant"
     )]
-    prefix: Arc<str>,
+    discovery_topic: Arc<str>,
     #[command(flatten)]
-    #[serde(flatten)]
     auth: Option<MqttUser>,
 }
 
 #[derive(clap::Args, Deserialize, Debug, Clone)]
 struct MqttUser {
-    #[serde(rename = "mqtt_username")]
     #[arg(
         short = 'u',
         long = "mqtt-username",
@@ -156,7 +147,6 @@ struct MqttUser {
         env("MQTT_USER")
     )]
     username: Arc<str>,
-    #[serde(rename = "mqtt_password")]
     #[arg(
         short = 'p',
         long = "mqtt-password",
@@ -172,11 +162,9 @@ struct MqttUser {
 #[derive(Parser, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 struct Command<'a> {
-    #[serde(flatten)]
     #[serde(borrow = "'a")]
     #[command(flatten)]
     spa: SpaOptions<'a>,
-    #[serde(flatten)]
     #[command(flatten)]
     mqtt: MqttOptions,
     #[serde(default = "default_values::r#false")]
@@ -252,7 +240,7 @@ async fn main() -> anyhow::Result<()> {
             MqttAuth::None
         };
         let session = MqttSession {
-            discovery_topic: args.mqtt.prefix.clone(),
+            discovery_topic: args.mqtt.discovery_topic.clone(),
             target: mqtt_addr,
             auth,
             keep_alive: 30,
