@@ -1,6 +1,6 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.58"
+version: "0.1.59"
 slug: "intouch2-mqtt"
 init: false
 arch:
@@ -13,6 +13,7 @@ stage: experimental
 services:
   - "mqtt:want"
 ingress: false
+schema: fale
 #schema:
 #  spa:
 #    spa_target: str
