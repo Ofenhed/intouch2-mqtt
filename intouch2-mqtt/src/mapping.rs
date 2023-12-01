@@ -74,7 +74,7 @@ pub struct HardcodedMapping<'a> {
     jobs: JoinSet<Result<(), MappingError>>,
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct EnumMapping {
     pub address: u16,
     pub len: u16,
@@ -101,13 +101,13 @@ impl EnumMapping {
     }
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct PlainMapping {
     pub address: u16,
     pub len: u16,
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct LightMapping<'a> {
     pub name: &'a str,
     pub onoff: EnumMapping,
@@ -115,7 +115,7 @@ pub struct LightMapping<'a> {
     pub effects: Option<EnumMapping>,
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct FanMapping<'a> {
     pub name: &'a str,
     pub state_mapping: EnumMapping,

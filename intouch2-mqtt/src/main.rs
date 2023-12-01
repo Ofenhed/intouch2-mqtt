@@ -51,7 +51,7 @@ mod default_values {
     }
 }
 
-#[derive(clap::Args, Deserialize)]
+#[derive(clap::Args, Debug, Deserialize)]
 struct SpaForward {
     #[serde(rename = "forward_listen_ip")]
     #[arg(
@@ -71,7 +71,7 @@ struct SpaForward {
     listen_port: u16,
 }
 
-#[derive(clap::Args, Deserialize)]
+#[derive(clap::Args, Debug, Deserialize)]
 struct SpaOptions<'a> {
     #[serde(rename = "spa_target")]
     #[arg(long = "spa-target", id = "spa-target")]
@@ -115,7 +115,7 @@ struct SpaOptions<'a> {
     devices: Option<SpaDevices<'a>>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Debug, Default)]
 struct SpaDevices<'a> {
     #[serde(borrow = "'a")]
     lights: Vec<mapping::LightMapping<'a>>,
@@ -123,7 +123,7 @@ struct SpaDevices<'a> {
     pumps: Vec<FanMapping<'a>>,
 }
 
-#[derive(clap::Args, Deserialize)]
+#[derive(clap::Args, Debug, Deserialize)]
 struct MqttOptions {
     #[serde(rename = "mqtt_target")]
     #[arg(long = "mqtt-target", id = "mqtt-target")]
@@ -143,7 +143,7 @@ struct MqttOptions {
     auth: Option<MqttUser>,
 }
 
-#[derive(clap::Args, Deserialize, Clone)]
+#[derive(clap::Args, Deserialize, Debug, Clone)]
 struct MqttUser {
     #[serde(rename = "mqtt_username")]
     #[arg(
@@ -169,7 +169,7 @@ struct MqttUser {
     password: Arc<OsStr>,
 }
 
-#[derive(Parser, Deserialize)]
+#[derive(Parser, Deserialize, Debug)]
 struct Command<'a> {
     #[serde(flatten)]
     #[serde(borrow = "'a")]
@@ -197,6 +197,7 @@ impl Command<'_> {
                 if let Ok(config_file) = std::fs::read(config_file) {
                     let loaded_config = Box::new(config_file);
                     let json = loaded_config.leak();
+                    println!("Loading config {}", String::from_utf8_lossy(json));
                     match serde_json::from_slice::<Command>(json) {
                         Ok(config) => return config,
                         Err(err) => {
@@ -232,6 +233,7 @@ pub enum Error {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Command::get();
+    eprintln!("Args: {args:?}");
     let mqtt = if let Some(target) = &args.mqtt.target {
         let mut mqtt_addrs = net::lookup_host(target.as_ref()).await?;
         let mqtt_addr = if let Some(addr) = mqtt_addrs.next() {
