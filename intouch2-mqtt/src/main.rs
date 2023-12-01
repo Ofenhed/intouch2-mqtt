@@ -240,6 +240,7 @@ async fn main() -> anyhow::Result<()> {
             Err(Error::NoDnsMatch(target.clone()))
         }?;
         let auth = if let Some(auth) = &args.mqtt.auth {
+            eprintln!("Trying to login with username {} and password {}", auth.username, auth.password.to_str().unwrap_or("NON-ASCII"));
             MqttAuth::Simple {
                 username: &auth.username,
                 password: &auth.password,
