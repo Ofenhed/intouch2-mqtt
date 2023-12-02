@@ -1,7 +1,7 @@
 use clap::Parser;
 use intouch2_mqtt::{
     home_assistant,
-    mapping::{self, FanMapping, HardcodedMapping},
+    mapping::{self, Mapping},
     mqtt_session::{MqttAuth, SessionBuilder as MqttSession},
     port_forward::{FullPackagePipe, PortForward, PortForwardError},
     spa::{SpaConnection, SpaError},
@@ -48,6 +48,31 @@ mod default_values {
 
     pub fn r#false() -> bool {
         false
+    }
+}
+
+#[derive(Deserialize, Debug)]
+enum JsonValue<'a, T: Deserialize<'a>> {
+    #[serde(skip)]
+    Parsed(T),
+    #[serde(untagged)]
+    Raw(&'a str),
+}
+
+impl<'a, T: Deserialize<'a>> JsonValue<'a, T> {
+    fn unwrap(&self) -> &T {
+        let JsonValue::Parsed(value) = self else { panic!("Tried to unwrap a raw JsonValue") };
+        value
+    }
+
+    fn leaking_parse(&mut self) -> Result<(), serde_json::error::Error> {
+        let raw_value = {
+            let JsonValue::Raw(raw_value) = self else { panic!("leaking_parse can only be used on raw JsonValue") };
+            Box::leak(Box::from(*raw_value))
+        };
+        let parsed = serde_json::from_str(raw_value)?;
+        *self = JsonValue::Parsed(parsed);
+        Ok(())
     }
 }
 
@@ -124,12 +149,12 @@ struct Command<'a> {
     /// A mapping of all lights which should be mapped from the Spa to MQTT.
     #[arg(skip)]
     #[serde(borrow = "'a")]
-    lights: Vec<mapping::LightMapping<'a>>,
+    lights: Vec<JsonValue<'a, mapping::LightMapping<'a>>>,
 
     /// A mapping of all pumps which should be mapped from the Spa to MQTT.
     #[arg(skip)]
     #[serde(borrow = "'a")]
-    pumps: Vec<FanMapping<'a>>,
+    pumps: Vec<JsonValue<'a, mapping::FanMapping<'a>>>,
 }
 
 impl Command<'_> {
@@ -143,7 +168,19 @@ impl Command<'_> {
                     let json = loaded_config.leak();
                     println!("Loading config {}", String::from_utf8_lossy(json));
                     match serde_json::from_slice::<Command>(json) {
-                        Ok(config) => return config,
+                        Ok(mut config) => return {
+                            let lights_result: Result<(), serde_json::error::Error> = config.lights.iter_mut().map(JsonValue::leaking_parse).collect();
+                            if let Err(err) = lights_result {
+                                eprintln!("Could not parse light: {err}");
+                                std::process::exit(1);
+                            }
+                            let pumps_result: Result<(), serde_json::error::Error> = config.pumps.iter_mut().map(JsonValue::leaking_parse).collect();
+                            if let Err(err) = pumps_result {
+                                eprintln!("Could not parse pump: {err}");
+                                std::process::exit(1);
+                            }
+                            config
+                        },
                         Err(err) => {
                             eprintln!("Could not read config: {err}");
                             std::process::exit(1);
@@ -303,7 +340,7 @@ async fn main() -> anyhow::Result<()> {
                 });
             }
             let spa_name = String::from_utf8_lossy(spa.name());
-            let mut mapping = HardcodedMapping::new(home_assistant::ConfigureDevice {
+            let mut mapping = Mapping::new(home_assistant::ConfigureDevice {
                 identifiers: Box::from([&*args.spa_id]),
                 name: spa_name.to_string(),
             })?;
@@ -311,14 +348,14 @@ async fn main() -> anyhow::Result<()> {
             for light in &args.lights {
                 counter += 1;
                 mapping
-                    .add_light(&format!("light{counter}"), light.clone(), &spa, &mut mqtt)
+                    .add_light(&format!("light{counter}"), light.unwrap().clone(), &spa, &mut mqtt)
                     .await?;
             }
             counter = 0;
             for pump in &args.pumps {
                 counter += 1;
                 mapping
-                    .add_pump(&format!("pump{counter}"), pump.clone(), &spa, &mut mqtt)
+                    .add_pump(&format!("pump{counter}"), pump.unwrap().clone(), &spa, &mut mqtt)
                     .await?;
             }
             join_set.spawn(async move {

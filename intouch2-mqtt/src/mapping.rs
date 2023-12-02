@@ -69,7 +69,7 @@ pub enum MappingError {
     Runtime(#[from] tokio::task::JoinError),
 }
 
-pub struct HardcodedMapping<'a> {
+pub struct Mapping<'a> {
     device: home_assistant::ConfigureDevice<'a>,
     jobs: JoinSet<Result<(), MappingError>>,
 }
@@ -122,7 +122,7 @@ pub struct FanMapping<'a> {
     pub percent_mapping: Option<EnumMapping>,
 }
 
-impl HardcodedMapping<'_> {
+impl Mapping<'_> {
     pub async fn add_light(
         &mut self,
         identifier: &str,
@@ -390,7 +390,7 @@ impl HardcodedMapping<'_> {
     }
 }
 
-impl<'a> HardcodedMapping<'a> {
+impl<'a> Mapping<'a> {
     pub fn new(device: home_assistant::ConfigureDevice<'a>) -> Result<Self, MappingError> {
         let jobs = JoinSet::new();
         Ok(Self { jobs, device })

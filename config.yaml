@@ -1,6 +1,6 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.64"
+version: "0.1.65"
 slug: "intouch2-mqtt"
 init: false
 arch:
@@ -26,39 +26,8 @@ schema:
   mqtt_username: str?
   mqtt_password: password?
   mqtt_discovery_topic: str?
-  lights:
-    - name: str
-      onoff:
-        address: int(1, 65535)
-        len: int(1, 65535)
-        bitmap: str
-        mapping:
-          - str
-            str
-      rgb:
-        - address: int(1, 65535)
-          len: int(1, 65535)
-      effects:
-        - address: int(1, 65535)
-          len: int(1, 65535)
-          bitmap: str
-          mapping:
-            - str
-              str
+  lights_json:
+    - str
 
-  pumps:
-    - name: str
-      state_mapping:
-        address: int(1, 65535)
-        len: int(1, 65535)
-        bitmap: str
-        mapping:
-          - str
-            str
-      percent_mapping:
-        address: int(1, 65535)
-        len: int(1, 65535)
-        bitmap: str
-        mapping:
-          - str
-            str
+  pumps_json:
+    - str
