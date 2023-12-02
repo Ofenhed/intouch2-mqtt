@@ -75,6 +75,7 @@ pub struct Mapping<'a> {
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct EnumMapping {
     pub address: u16,
     pub len: u16,
@@ -102,12 +103,14 @@ impl EnumMapping {
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct PlainMapping {
     pub address: u16,
     pub len: u16,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct LightMapping<'a> {
     pub name: &'a str,
     pub onoff: EnumMapping,
@@ -116,6 +119,7 @@ pub struct LightMapping<'a> {
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct FanMapping<'a> {
     pub name: &'a str,
     pub state_mapping: EnumMapping,

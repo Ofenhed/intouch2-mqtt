@@ -1,6 +1,5 @@
 use mqttrs::*;
 use std::{
-    ffi::OsStr,
     net::SocketAddr,
     ops::{Add, Deref},
     pin::Pin,
@@ -20,7 +19,7 @@ const CLIENT_ID: &str = "spa_client";
 pub enum MqttAuth<'a> {
     Simple {
         username: &'a str,
-        password: &'a OsStr,
+        password: &'a str,
     },
     None,
 }
@@ -241,7 +240,7 @@ impl SessionBuilder<'_> {
         };
         if let MqttAuth::Simple { username, password } = self.auth {
             connect.username = Some(username);
-            connect.password = Some(password.as_encoded_bytes());
+            connect.password = Some(password.as_bytes());
         }
         let mut buffer = Box::new([0; 4096]);
         let packet = Packet::Connect(connect);

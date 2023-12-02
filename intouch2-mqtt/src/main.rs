@@ -7,7 +7,6 @@ use intouch2_mqtt::{
     spa::{SpaConnection, SpaError},
 };
 use std::{
-    ffi::OsStr,
     net::IpAddr,
     sync::{Arc, OnceLock},
     time::Duration,
@@ -77,6 +76,7 @@ impl<'a, T: Deserialize<'a>> JsonValue<'a, T> {
 }
 
 #[derive(Parser, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 struct Command<'a> {
     /// The IP and Port of the Spa system.
     #[arg(long)]
