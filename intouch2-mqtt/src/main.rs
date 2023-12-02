@@ -70,6 +70,7 @@ impl<T: Deserialize<'static>> JsonValue<T> {
             let JsonValue::Raw(raw_value) = self else { panic!("leaking_parse can only be used on raw JsonValue") };
             Box::leak(Box::from(raw_value.as_ref()))
         };
+        eprintln!("Parsing JSON {raw_value}");
         let parsed = serde_json::from_str(raw_value)?;
         *self = JsonValue::Parsed(parsed);
         Ok(())
