@@ -1,6 +1,6 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.63"
+version: "0.1.64"
 slug: "intouch2-mqtt"
 init: false
 arch:
@@ -14,21 +14,51 @@ services:
   - "mqtt:want"
 ingress: false
 schema:
-  spa:
-    target: str
-    unique_id: str
-    memory_size: int(1,65535)
-    udp_timeout: int(1,600)?
-    forward:
-      custom_value: true
-      multiple: true
-    handshake_timeout: int(1,60)?
+  spa_target: str
+  spa_id: str
+  spa_memory_size: int(1,65535)
+  spa_udp_timeout: int(1,600)?
+  spa_handshake_timeout: int(1,60)?
   verbose: bool?
   dump_traffic: bool?
-  memory_changes_topic: str?
-  mqtt:
-    target: str?
-    discovery_topic: str?
-    auth:
-      custom_value: true
-      multiple: true
+  memory_changes_mqtt_topic: str?
+  mqtt_target: str?
+  mqtt_username: str?
+  mqtt_password: password?
+  mqtt_discovery_topic: str?
+  lights:
+    - name: str
+      onoff:
+        address: int(1, 65535)
+        len: int(1, 65535)
+        bitmap: str
+        mapping:
+          - str
+            str
+      rgb:
+        - address: int(1, 65535)
+          len: int(1, 65535)
+      effects:
+        - address: int(1, 65535)
+          len: int(1, 65535)
+          bitmap: str
+          mapping:
+            - str
+              str
+
+  pumps:
+    - name: str
+      state_mapping:
+        address: int(1, 65535)
+        len: int(1, 65535)
+        bitmap: str
+        mapping:
+          - str
+            str
+      percent_mapping:
+        address: int(1, 65535)
+        len: int(1, 65535)
+        bitmap: str
+        mapping:
+          - str
+            str

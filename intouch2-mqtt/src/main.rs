@@ -51,130 +51,85 @@ mod default_values {
     }
 }
 
-#[derive(clap::Args, Debug, Deserialize)]
-struct SpaForward {
-    #[arg(
-        long = "spa-forward-listen-ip",
-        id = "spa-forward-listen-ip",
-        alias = "forward-ip",
-        required = false
-    )]
-    listen_ip: IpAddr,
-    #[serde(default = "default_values::spa_port")]
-    #[arg(
-        long = "spa-forward-listen-port",
-        id = "spa-forward-listen-port",
-        default_value = "10022",
-        alias = "forward-port"
-    )]
-    listen_port: u16,
-}
-
-#[derive(clap::Args, Debug, Deserialize)]
-struct SpaOptions<'a> {
-    #[arg(long = "spa-target", id = "spa-target")]
-    target: Arc<str>,
-    #[serde(default = "default_values::spa_name")]
-    #[arg(
-        default_value = "spa_pool",
-        short = 'n',
-        long = "spa-unique-id",
-        id = "spa-unique-id",
-        alias = "name"
-    )]
-    unique_id: Arc<str>,
-    #[arg(long = "spa-memory-size", id = "spa-memory-size")]
-    memory_size: usize,
-    #[command(flatten)]
-    forward: Option<SpaForward>,
-    #[serde(default = "default_values::udp_timeout")]
-    #[arg(
-        long = "spa-timeout",
-        id = "spa-timeout",
-        default_value = "300",
-        alias = "forward-timeout"
-    )]
-    udp_timeout: u16,
-    #[serde(
-        default = "default_values::handshake_timeout"
-    )]
-    #[arg(
-        long = "spa-handshake-timeout",
-        id = "spa-handshake-timeout",
-        default_value = "10",
-        alias = "handshake-timeout"
-    )]
-    handshake_timeout: u16,
-    #[arg(skip)]
-    #[serde(borrow = "'a")]
-    devices: Option<SpaDevices<'a>>,
-}
-
-#[derive(Deserialize, Debug, Default)]
-struct SpaDevices<'a> {
-    #[serde(borrow = "'a")]
-    lights: Vec<mapping::LightMapping<'a>>,
-    #[serde(borrow = "'a")]
-    pumps: Vec<FanMapping<'a>>,
-}
-
-#[derive(clap::Args, Debug, Deserialize)]
-struct MqttOptions {
-    #[arg(long = "mqtt-target", id = "mqtt-target")]
-    target: Option<Arc<str>>,
-    #[serde(
-        default = "default_values::discovery_topic"
-    )]
-    #[arg(
-        long = "discovery-topic",
-        id = "discovery-topic",
-        default_value = "homeassistant"
-    )]
-    discovery_topic: Arc<str>,
-    #[command(flatten)]
-    auth: Option<MqttUser>,
-}
-
-#[derive(clap::Args, Deserialize, Debug, Clone)]
-struct MqttUser {
-    #[arg(
-        short = 'u',
-        long = "mqtt-username",
-        id = "mqtt-username",
-        required = false,
-        requires("mqtt-password"),
-        requires("mqtt-target"),
-        env("MQTT_USER")
-    )]
-    username: Arc<str>,
-    #[arg(
-        short = 'p',
-        long = "mqtt-password",
-        id = "mqtt-password",
-        required = false,
-        requires("mqtt-username"),
-        requires("mqtt-target"),
-        env("MQTT_PASSWORD")
-    )]
-    password: Arc<OsStr>,
-}
-
 #[derive(Parser, Deserialize, Debug)]
-#[serde(deny_unknown_fields)]
 struct Command<'a> {
-    #[serde(borrow = "'a")]
-    #[command(flatten)]
-    spa: SpaOptions<'a>,
-    #[command(flatten)]
-    mqtt: MqttOptions,
+    /// The IP and Port of the Spa system.
+    #[arg(long)]
+    spa_target: Arc<str>,
+
+    /// The name which should be used for the spa in MQTT commands
+    #[serde(default = "default_values::spa_name")]
+    #[arg(default_value = "spa_pool", short = 'n', alias = "spa_name")]
+    spa_id: Arc<str>,
+
+    /// The memory size of your spa. This can be found by wiretapping your Spa app. This is
+    /// required for anything else than wiretapping.
+    #[arg(long)]
+    spa_memory_size: Option<usize>,
+
+    /// Timeout before the Spa is considered unaccessible after initial contact.
+    #[serde(default = "default_values::udp_timeout")]
+    #[arg(default_value = "300")]
+    spa_udp_timeout: u16,
+    #[serde(default = "default_values::handshake_timeout")]
+    #[arg(default_value = "10", alias = "handshake-timeout")]
+
+    /// Timeout for the first Hello packet to the Spa.
+    spa_handshake_timeout: u16,
     #[serde(default = "default_values::r#false")]
     #[arg(short, long)]
     verbose: bool,
     #[serde(default = "default_values::r#false")]
     #[arg(short, long)]
+
+    /// Dump all traffic to stdout
     dump_traffic: bool,
+    #[arg(alias = "forward-ip", required = false)]
+
+    /// Forward traffic from a local port to the Spa. This can be used to figure out
+    /// spa_memory_size, or for general debugging.
+    spa_forward_listen_ip: Option<IpAddr>,
+    #[serde(default = "default_values::spa_port")]
+    #[arg(default_value = "10022", alias = "forward-port")]
+    spa_forward_listen_port: u16,
     #[arg(long)]
-    memory_changes_topic: Option<Arc<str>>,
+
+    /// The MQTT server address and port number
+    mqtt_target: Option<Arc<str>>,
+    #[arg(
+        short = 'u',
+        requires("mqtt-password"),
+        requires("mqtt-target"),
+        env("MQTT_USER")
+    )]
+    mqtt_username: Option<Arc<str>>,
+
+    #[arg(
+        short = 'p',
+        requires("mqtt-username"),
+        requires("mqtt-target"),
+        env("MQTT_PASSWORD")
+    )]
+    mqtt_password: Option<Arc<OsStr>>,
+
+    #[serde(default = "default_values::discovery_topic")]
+    #[arg(default_value = "homeassistant")]
+    mqtt_discovery_topic: Arc<str>,
+
+    /// Set this to dump memory changes to the specified MQTT topic as
+    /// "{memory_changes_mqtt_target}/{changed_address}".
+    #[arg(long)]
+    memory_changes_mqtt_target: Option<Arc<str>>,
+
+    /// A mapping of all lights which should be mapped from the Spa to MQTT.
+    #[arg(skip)]
+    #[serde(borrow = "'a")]
+    lights: Vec<mapping::LightMapping<'a>>,
+
+    /// A mapping of all pumps which should be mapped from the Spa to MQTT.
+    #[arg(skip)]
+    #[serde(borrow = "'a")]
+    pumps: Vec<FanMapping<'a>>,
 }
 
 impl Command<'_> {
@@ -217,30 +172,32 @@ pub enum Error {
     PortForwardClosed,
     #[error("Runtime error: {0}")]
     TokioJoinSet(#[from] tokio::task::JoinError),
+    #[error("Invalid arguments: {0}")]
+    InvalidArguments(&'static str),
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Command::get();
     eprintln!("Args: {args:?}");
-    let mqtt = if let Some(target) = &args.mqtt.target {
+    let mqtt = if let Some(target) = &args.mqtt_target {
         let mut mqtt_addrs = net::lookup_host(target.as_ref()).await?;
         let mqtt_addr = if let Some(addr) = mqtt_addrs.next() {
             Ok(addr)
         } else {
             Err(Error::NoDnsMatch(target.clone()))
         }?;
-        let auth = if let Some(auth) = &args.mqtt.auth {
-            eprintln!("Trying to login with username {} and password {}", auth.username, auth.password.to_str().unwrap_or("NON-ASCII"));
-            MqttAuth::Simple {
-                username: &auth.username,
-                password: &auth.password,
+        let auth = match (args.mqtt_username.as_deref(), args.mqtt_password.as_deref()) {
+            (Some(username), Some(password)) => MqttAuth::Simple { username, password },
+            (None, None) => MqttAuth::None,
+            (None, Some(_)) | (Some(_), None) => {
+                return Err(Error::InvalidArguments(
+                    "mqtt_username or mqtt_password neds to be both set or both unset",
+                ))?
             }
-        } else {
-            MqttAuth::None
         };
         let session = MqttSession {
-            discovery_topic: args.mqtt.discovery_topic.clone(),
+            discovery_topic: args.mqtt_discovery_topic.clone(),
             target: mqtt_addr,
             auth,
             keep_alive: 30,
@@ -249,27 +206,26 @@ async fn main() -> anyhow::Result<()> {
     } else {
         None
     };
-    let mut spa_addrs = net::lookup_host(args.spa.target.as_ref()).await?;
+    let mut spa_addrs = net::lookup_host(args.spa_target.as_ref()).await?;
     let spa_addr = if let Some(addr) = spa_addrs.next() {
         Ok(addr)
     } else {
-        Err(Error::NoDnsMatch(args.spa.target.clone()))
+        Err(Error::NoDnsMatch(args.spa_target.clone()))
     }?;
     println!("Spa addr: {spa_addr}");
     let spa_pipe = FullPackagePipe::new();
     let forward_addr = args
-        .spa
-        .forward
+        .spa_forward_listen_ip
         .as_ref()
-        .map(|x| std::net::SocketAddr::new(x.listen_ip, x.listen_port));
+        .map(|x| std::net::SocketAddr::new(*x, args.spa_forward_listen_port));
     let forward = PortForward {
         listen_addr: forward_addr,
         target_addr: spa_addr,
-        handshake_timeout: Duration::from_secs(args.spa.handshake_timeout.into()),
-        udp_timeout: Duration::from_secs(args.spa.udp_timeout.into()),
+        handshake_timeout: Duration::from_secs(args.spa_handshake_timeout.into()),
+        udp_timeout: Duration::from_secs(args.spa_udp_timeout.into()),
         verbose: args.verbose,
         dump_traffic: args.dump_traffic,
-        local_connection: Some(spa_pipe.forwarder),
+        local_connection: args.spa_memory_size.map(|_| spa_pipe.forwarder),
     };
     enum JoinResult {
         SpaConnected(Arc<SpaConnection>),
@@ -281,110 +237,133 @@ async fn main() -> anyhow::Result<()> {
         println!("Stopping forward");
         Err(Error::PortForwardClosed)?
     });
-    join_set.spawn(async move {
-        Ok(JoinResult::SpaConnected(Arc::new(
-            timeout(
-                Duration::from_secs(5),
-                SpaConnection::new(args.spa.memory_size, spa_pipe.spa),
-            )
-            .await
-            .map_err(|_| Error::NoReplyFromSpa)??,
-        )))
-    });
-    let Some(reply) = join_set.join_next().await else {
-        unreachable!("The function above will return")
+    let spa = if let Some(memory_size) = args.spa_memory_size {
+        join_set.spawn(async move {
+            Ok(JoinResult::SpaConnected(Arc::new(
+                timeout(
+                    Duration::from_secs(5),
+                    SpaConnection::new(memory_size, spa_pipe.spa),
+                )
+                .await
+                .map_err(|_| Error::NoReplyFromSpa)??,
+            )))
+        });
+        let Some(reply) = join_set.join_next().await else {
+            unreachable!("The function above will return")
+        };
+        let JoinResult::SpaConnected(spa) = reply?? else {
+            unreachable!("SpaConnected is the only possible reply from threads spawned before here")
+        };
+        Some(spa)
+    } else {
+        None
     };
-    let JoinResult::SpaConnected(spa) = reply?? else {
-        unreachable!("SpaConnected is the only possible reply from threads spawned before here")
-    };
-    if let Some(mut mqtt) = mqtt {
-        if let Some(memory_change_topic) = &args.memory_changes_topic {
-            let mut mqtt_sender = mqtt.sender();
-            let len = spa.len().await;
-            let mut spa_data = spa.subscribe(0..len).await;
-            join_set.spawn(async move {
-                let mut previous: Box<[u8]> = spa_data.borrow_and_update().as_ref().into();
-                let mut differences = Vec::with_capacity(len);
-                loop {
-                    differences.clear();
-                    {
-                        spa_data.changed().await?;
-                        let data = spa_data.borrow_and_update();
-                        for i in 0..len {
-                            if previous[i] != data[i] {
-                                differences.push((i, data[i]));
+    match (mqtt, &spa, &args.memory_changes_mqtt_target) {
+        (Some(mut mqtt), Some(spa), memory_change_topic) => {
+            if let Some(memory_change_topic) = memory_change_topic {
+                let mut mqtt_sender = mqtt.sender();
+                let len = spa.len().await;
+                let mut spa_data = spa.subscribe(0..len).await;
+                join_set.spawn(async move {
+                    let mut previous: Box<[u8]> = spa_data.borrow_and_update().as_ref().into();
+                    let mut differences = Vec::with_capacity(len);
+                    loop {
+                        differences.clear();
+                        {
+                            spa_data.changed().await?;
+                            let data = spa_data.borrow_and_update();
+                            for i in 0..len {
+                                if previous[i] != data[i] {
+                                    differences.push((i, data[i]));
+                                }
                             }
+                            previous = data.as_ref().into();
                         }
-                        previous = data.as_ref().into();
+                        for (position, value) in differences.iter() {
+                            let payload = format!("{value}");
+                            let topic_name = format!("{memory_change_topic}/{position}");
+                            let package = mqttrs::Packet::Publish(mqttrs::Publish {
+                                dup: false,
+                                qospid: mqttrs::QosPid::AtMostOnce,
+                                retain: false,
+                                topic_name: &topic_name,
+                                payload: payload.as_bytes(),
+                            });
+                            mqtt_sender.send(&package).await?;
+                        }
+                        #[cfg(debug_assertions)]
+                        {
+                            let differences: String = differences
+                                .iter()
+                                .map(|(i, d)| format!("{i}: {d}, "))
+                                .collect();
+                            println!("Differences: {}", differences);
+                        }
                     }
-                    for (position, value) in differences.iter() {
-                        let payload = format!("{value}");
-                        let topic_name = format!("{memory_change_topic}/{position}");
-                        let package = mqttrs::Packet::Publish(mqttrs::Publish {
-                            dup: false,
-                            qospid: mqttrs::QosPid::AtMostOnce,
-                            retain: false,
-                            topic_name: &topic_name,
-                            payload: payload.as_bytes(),
-                        });
-                        mqtt_sender.send(&package).await?;
-                    }
-                    #[cfg(debug_assertions)]
-                    {
-                        let differences: String = differences
-                            .iter()
-                            .map(|(i, d)| format!("{i}: {d}, "))
-                            .collect();
-                        println!("Differences: {}", differences);
-                    }
-                }
-            });
-        }
-        let spa_name = String::from_utf8_lossy(spa.name());
-        let mut mapping = HardcodedMapping::new(home_assistant::ConfigureDevice {
-            identifiers: Box::from([&*args.spa.unique_id]),
-            name: spa_name.to_string(),
-        })?;
-        if let Some(ref devices) = args.spa.devices {
+                });
+            }
+            let spa_name = String::from_utf8_lossy(spa.name());
+            let mut mapping = HardcodedMapping::new(home_assistant::ConfigureDevice {
+                identifiers: Box::from([&*args.spa_id]),
+                name: spa_name.to_string(),
+            })?;
             let mut counter = 0;
-            for light in &devices.lights {
+            for light in &args.lights {
                 counter += 1;
                 mapping
                     .add_light(&format!("light{counter}"), light.clone(), &spa, &mut mqtt)
                     .await?;
             }
             counter = 0;
-            for pump in &devices.pumps {
+            for pump in &args.pumps {
                 counter += 1;
                 mapping
                     .add_pump(&format!("pump{counter}"), pump.clone(), &spa, &mut mqtt)
                     .await?;
             }
+            join_set.spawn(async move {
+                loop {
+                    mapping.tick().await?;
+                }
+            });
+            // let mut mqtt_spy = mqtt.subscribe();
+            // join_set.spawn(async move {
+            //    loop {
+            //        let response = mqtt_spy.recv().await?;
+            //        eprintln!("Got data: {:?}", response.packet);
+            //    }
+            //});
+            join_set.spawn(async move {
+                loop {
+                    mqtt.tick().await?;
+                }
+            });
         }
+        (None, Some(_), Some(_)) => {
+            return Err(Error::InvalidArguments(
+                "mqtt_memory_changes_topic requres mqtt to be set",
+            ))?
+        }
+        (Some(_), None, _) => {
+            return Err(Error::InvalidArguments(
+                "mqtt requres a known spa_memory_size",
+            ))?
+        }
+        (_, None, Some(_)) => {
+            return Err(Error::InvalidArguments(
+                "mqtt_memory_changes_topic requres a known spa_memory_size",
+            ))?
+        }
+        (None, _, None) => (),
+    }
+    if let Some(spa) = spa {
+        // let spa_worker = spa.clone();
         join_set.spawn(async move {
             loop {
-                mapping.tick().await?;
-            }
-        });
-        let mut mqtt_spy = mqtt.subscribe();
-        join_set.spawn(async move {
-            loop {
-                let response = mqtt_spy.recv().await?;
-                eprintln!("Got data: {:?}", response.packet);
-            }
-        });
-        join_set.spawn(async move {
-            loop {
-                mqtt.tick().await?;
+                spa.recv().await?;
             }
         });
     }
-    let spa_worker = spa.clone();
-    join_set.spawn(async move {
-        loop {
-            spa_worker.recv().await?;
-        }
-    });
     while let Some(job) = join_set.join_next().await {
         job??;
     }
