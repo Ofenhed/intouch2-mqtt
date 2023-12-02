@@ -74,13 +74,13 @@ pub struct Mapping<'a> {
     jobs: JoinSet<Result<(), MappingError>>,
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct EnumMapping {
     pub address: u16,
     pub len: u16,
-    pub bitmap: Option<Vec<u8>>,
-    pub mapping: HashMap<Vec<u8>, Vec<u8>>,
+    pub bitmap: Option<String>,
+    pub mapping: HashMap<String, String>,
 }
 
 fn apply_bitmap<'a>(bitmap: Option<&[u8]>, data: &'a [u8]) -> Cow<'a, [u8]> {
@@ -98,18 +98,18 @@ fn apply_bitmap<'a>(bitmap: Option<&[u8]>, data: &'a [u8]) -> Cow<'a, [u8]> {
 
 impl EnumMapping {
     fn apply_bitmap<'a>(&self, data: &'a [u8]) -> Cow<'a, [u8]> {
-        apply_bitmap(self.bitmap.as_deref(), data)
+        apply_bitmap(self.bitmap.as_ref().map(|x| x.as_bytes()), data)
     }
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct PlainMapping {
     pub address: u16,
     pub len: u16,
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct LightMapping<'a> {
     pub name: &'a str,
@@ -143,11 +143,7 @@ impl Mapping<'_> {
             Option<String>,
             Option<String>,
         ) = if let Some(effects) = &mapping.effects {
-            let values: HashSet<_> = effects
-                .mapping
-                .values()
-                .map(|x| String::from_utf8_lossy(x).into_owned())
-                .collect();
+            let values: HashSet<_> = effects.mapping.values().map(ToOwned::to_owned).collect();
             (
                 Some(values.into_iter().collect()),
                 Some(mqtt.topic("light", &format!("{unique_id}/effect"), Topic::State)),
@@ -201,12 +197,17 @@ impl Mapping<'_> {
             let mut sender = mqtt.sender();
             self.jobs.spawn(async move {
                 loop {
-                    let empty = Vec::from(b"");
+                    let empty = "".to_string();
                     let reported_value = {
                         let new_value = spa_data.borrow_and_update();
                         onoff
                             .mapping
-                            .get(onoff.apply_bitmap(new_value.as_ref()).as_ref())
+                            .get(
+                                String::from_utf8_lossy(
+                                    &onoff.apply_bitmap(new_value.as_ref()).as_ref(),
+                                )
+                                .as_ref(),
+                            )
                             .unwrap_or(&empty)
                     };
                     eprintln!("Data changed, new state is {:?}", reported_value);
@@ -215,7 +216,7 @@ impl Mapping<'_> {
                         qospid: QosPid::AtMostOnce,
                         retain: false,
                         topic_name: &state_topic,
-                        payload: reported_value,
+                        payload: reported_value.as_bytes(),
                     });
                     sender.send(&package).await?;
                     spa_data.changed().await.unwrap(); // TODO: Add error handling
@@ -229,12 +230,17 @@ impl Mapping<'_> {
             let mut spa_data = spa.subscribe(start..end).await;
             self.jobs.spawn(async move {
                 loop {
-                    let null = b"".into();
+                    let null = "".to_string();
                     let reported_value = {
                         let new_value = spa_data.borrow_and_update();
                         effects
                             .mapping
-                            .get(effects.apply_bitmap(new_value.as_ref()).as_ref())
+                            .get(
+                                String::from_utf8_lossy(
+                                    &effects.apply_bitmap(new_value.as_ref()).as_ref(),
+                                )
+                                .as_ref(),
+                            )
                             .unwrap_or(&null)
                     };
                     let package = Packet::Publish(Publish {
@@ -244,7 +250,7 @@ impl Mapping<'_> {
                         topic_name: effects_state_topic
                             .as_deref()
                             .expect("Can only get here if effects topic is Some"),
-                        payload: &reported_value,
+                        payload: reported_value.as_bytes(),
                     });
                     sender.send(&package).await?;
                     spa_data.changed().await.unwrap(); // TODO: Add error handling
@@ -333,12 +339,17 @@ impl Mapping<'_> {
             let mut sender = mqtt.sender();
             self.jobs.spawn(async move {
                 loop {
-                    let empty = Vec::from(b"");
+                    let empty = "".to_string();
                     let reported_value = {
                         let new_value = state.borrow_and_update();
                         state_mapping
                             .mapping
-                            .get(state_mapping.apply_bitmap(new_value.as_ref()).as_ref())
+                            .get(
+                                String::from_utf8_lossy(
+                                    &state_mapping.apply_bitmap(new_value.as_ref()).as_ref(),
+                                )
+                                .as_ref(),
+                            )
                             .unwrap_or(&empty)
                     };
                     eprintln!("Data changed, new state is {:?}", reported_value);
@@ -347,7 +358,7 @@ impl Mapping<'_> {
                         qospid: QosPid::AtMostOnce,
                         retain: false,
                         topic_name: &state_topic,
-                        payload: reported_value,
+                        payload: reported_value.as_bytes(),
                     });
                     sender.send(&package).await?;
                     state.changed().await.unwrap(); // TODO: Add error handling
@@ -361,12 +372,17 @@ impl Mapping<'_> {
             let mut spa_data = spa.subscribe(start..end).await;
             self.jobs.spawn(async move {
                 loop {
-                    let null = b"".into();
+                    let null = "".to_string();
                     let reported_value = {
                         let new_value = spa_data.borrow_and_update();
                         percent
                             .mapping
-                            .get(percent.apply_bitmap(new_value.as_ref()).as_ref())
+                            .get(
+                                String::from_utf8_lossy(
+                                    &percent.apply_bitmap(new_value.as_ref()).as_ref(),
+                                )
+                                .as_ref(),
+                            )
                             .unwrap_or(&null)
                     };
                     let package = Packet::Publish(Publish {
@@ -376,7 +392,7 @@ impl Mapping<'_> {
                         topic_name: percent_state_topic
                             .as_deref()
                             .expect("Can only get here if effects topic is Some"),
-                        payload: &reported_value,
+                        payload: reported_value.as_bytes(),
                     });
                     sender.send(&package).await?;
                     spa_data.changed().await.unwrap(); // TODO: Add error handling

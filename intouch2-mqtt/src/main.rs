@@ -61,13 +61,17 @@ enum JsonValue<T: Deserialize<'static>> {
 
 impl<T: Deserialize<'static>> JsonValue<T> {
     fn unwrap(&self) -> &T {
-        let JsonValue::Parsed(value) = self else { panic!("Tried to unwrap a raw JsonValue") };
+        let JsonValue::Parsed(value) = self else {
+            panic!("Tried to unwrap a raw JsonValue")
+        };
         value
     }
 
     fn leaking_parse(&mut self) -> Result<(), serde_json::error::Error> {
         let raw_value = {
-            let JsonValue::Raw(raw_value) = self else { panic!("leaking_parse can only be used on raw JsonValue") };
+            let JsonValue::Raw(raw_value) = self else {
+                panic!("leaking_parse can only be used on raw JsonValue")
+            };
             Box::leak(Box::from(raw_value.as_ref()))
         };
         eprintln!("Parsing JSON {raw_value}");
@@ -170,19 +174,29 @@ impl Command {
                     let json = loaded_config.leak();
                     println!("Loading config {}", String::from_utf8_lossy(json));
                     match serde_json::from_slice::<Command>(json) {
-                        Ok(mut config) => return {
-                            let lights_result: Result<(), serde_json::error::Error> = config.lights.iter_mut().map(JsonValue::leaking_parse).collect();
-                            if let Err(err) = lights_result {
-                                eprintln!("Could not parse light: {err}");
-                                std::process::exit(1);
+                        Ok(mut config) => {
+                            return {
+                                let lights_result: Result<(), serde_json::error::Error> = config
+                                    .lights
+                                    .iter_mut()
+                                    .map(JsonValue::leaking_parse)
+                                    .collect();
+                                if let Err(err) = lights_result {
+                                    eprintln!("Could not parse light: {err}");
+                                    std::process::exit(1);
+                                }
+                                let pumps_result: Result<(), serde_json::error::Error> = config
+                                    .pumps
+                                    .iter_mut()
+                                    .map(JsonValue::leaking_parse)
+                                    .collect();
+                                if let Err(err) = pumps_result {
+                                    eprintln!("Could not parse pump: {err}");
+                                    std::process::exit(1);
+                                }
+                                config
                             }
-                            let pumps_result: Result<(), serde_json::error::Error> = config.pumps.iter_mut().map(JsonValue::leaking_parse).collect();
-                            if let Err(err) = pumps_result {
-                                eprintln!("Could not parse pump: {err}");
-                                std::process::exit(1);
-                            }
-                            config
-                        },
+                        }
                         Err(err) => {
                             eprintln!("Could not read config: {err}");
                             std::process::exit(1);
@@ -350,14 +364,24 @@ async fn main() -> anyhow::Result<()> {
             for light in &args.lights {
                 counter += 1;
                 mapping
-                    .add_light(&format!("light{counter}"), light.unwrap().clone(), &spa, &mut mqtt)
+                    .add_light(
+                        &format!("light{counter}"),
+                        light.unwrap().clone(),
+                        &spa,
+                        &mut mqtt,
+                    )
                     .await?;
             }
             counter = 0;
             for pump in &args.pumps {
                 counter += 1;
                 mapping
-                    .add_pump(&format!("pump{counter}"), pump.unwrap().clone(), &spa, &mut mqtt)
+                    .add_pump(
+                        &format!("pump{counter}"),
+                        pump.unwrap().clone(),
+                        &spa,
+                        &mut mqtt,
+                    )
                     .await?;
             }
             join_set.spawn(async move {
