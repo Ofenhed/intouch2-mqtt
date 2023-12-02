@@ -52,14 +52,14 @@ mod default_values {
 
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
-enum JsonValue<'a, T: Deserialize<'a>> {
+enum JsonValue<T: Deserialize<'static>> {
     #[serde(skip)]
     Parsed(T),
     #[serde(untagged)]
-    Raw(&'a str),
+    Raw(String),
 }
 
-impl<'a, T: Deserialize<'a>> JsonValue<'a, T> {
+impl<T: Deserialize<'static>> JsonValue<T> {
     fn unwrap(&self) -> &T {
         let JsonValue::Parsed(value) = self else { panic!("Tried to unwrap a raw JsonValue") };
         value
@@ -68,7 +68,7 @@ impl<'a, T: Deserialize<'a>> JsonValue<'a, T> {
     fn leaking_parse(&mut self) -> Result<(), serde_json::error::Error> {
         let raw_value = {
             let JsonValue::Raw(raw_value) = self else { panic!("leaking_parse can only be used on raw JsonValue") };
-            Box::leak(Box::from(*raw_value))
+            Box::leak(Box::from(raw_value.as_ref()))
         };
         let parsed = serde_json::from_str(raw_value)?;
         *self = JsonValue::Parsed(parsed);
@@ -78,7 +78,7 @@ impl<'a, T: Deserialize<'a>> JsonValue<'a, T> {
 
 #[derive(Parser, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-struct Command<'a> {
+struct Command {
     /// The IP and Port of the Spa system.
     #[arg(long)]
     spa_target: Arc<str>,
@@ -149,17 +149,17 @@ struct Command<'a> {
 
     /// A mapping of all lights which should be mapped from the Spa to MQTT.
     #[arg(skip)]
-    #[serde(borrow = "'a", rename = "lights_json")]
-    lights: Vec<JsonValue<'a, mapping::LightMapping<'a>>>,
+    #[serde(rename = "lights_json")]
+    lights: Vec<JsonValue<mapping::LightMapping<'static>>>,
 
     /// A mapping of all pumps which should be mapped from the Spa to MQTT.
     #[arg(skip)]
-    #[serde(borrow = "'a", rename = "pumps_json")]
-    pumps: Vec<JsonValue<'a, mapping::FanMapping<'a>>>,
+    #[serde(rename = "pumps_json")]
+    pumps: Vec<JsonValue<mapping::FanMapping<'static>>>,
 }
 
-impl Command<'_> {
-    fn get() -> &'static Command<'static> {
+impl Command {
+    fn get() -> &'static Command {
         static ARGS: OnceLock<Command> = OnceLock::new();
         ARGS.get_or_init(|| {
             let config_file = "/data/options.json";
