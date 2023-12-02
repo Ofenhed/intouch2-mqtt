@@ -135,7 +135,7 @@ struct Command<'a> {
         requires("mqtt-target"),
         env("MQTT_PASSWORD")
     )]
-    mqtt_password: Option<Arc<OsStr>>,
+    mqtt_password: Option<Arc<str>>,
 
     #[serde(default = "default_values::discovery_topic")]
     #[arg(default_value = "homeassistant")]
