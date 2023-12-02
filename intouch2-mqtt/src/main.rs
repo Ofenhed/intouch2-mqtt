@@ -55,6 +55,7 @@ mod default_values {
 enum JsonValue<'a, T: Deserialize<'a>> {
     #[serde(skip)]
     Parsed(T),
+    #[serde(untagged)]
     Raw(&'a str),
 }
 
