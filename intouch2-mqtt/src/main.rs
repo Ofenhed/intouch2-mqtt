@@ -148,12 +148,12 @@ struct Command<'a> {
 
     /// A mapping of all lights which should be mapped from the Spa to MQTT.
     #[arg(skip)]
-    #[serde(borrow = "'a")]
+    #[serde(borrow = "'a", rename = "lights_json")]
     lights: Vec<JsonValue<'a, mapping::LightMapping<'a>>>,
 
     /// A mapping of all pumps which should be mapped from the Spa to MQTT.
     #[arg(skip)]
-    #[serde(borrow = "'a")]
+    #[serde(borrow = "'a", rename = "pumps_json")]
     pumps: Vec<JsonValue<'a, mapping::FanMapping<'a>>>,
 }
 
