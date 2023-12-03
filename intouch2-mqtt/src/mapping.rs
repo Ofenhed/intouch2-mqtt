@@ -126,12 +126,31 @@ pub struct FanMapping<'a> {
     pub percent_mapping: Option<EnumMapping>,
 }
 
+#[derive(serde::Deserialize, strum::IntoStaticStr, Debug, Clone, Copy)]
+#[serde(deny_unknown_fields)]
+pub enum TemperatureUnit {
+    C,
+    F,
+}
+
+impl TemperatureUnit {
+    pub fn translate(&self, data: &[u8; 2]) -> f32 {
+        let new_value: f32 = u16::from_be_bytes(*data).into();
+        let float = match self {
+            Self::C => new_value / 18.0,
+            Self::F => (new_value + 320.0) / 10.0,
+        };
+        float
+    }
+}
+
 #[derive(serde::Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct ClimateMapping<'a> {
     pub name: &'a str,
     pub target_addr: u16,
     pub current_addr: Option<u16>,
+    pub unit: TemperatureUnit,
 }
 
 impl Mapping<'_> {
@@ -311,6 +330,7 @@ impl Mapping<'_> {
         let config_topic = mqtt.topic("climate", &unique_id, Topic::Config);
         let payload = home_assistant::ConfigureClimate {
             temperature_state_topic: Some(&target_temperature_state_topic),
+            temperature_unit: Some(mapping.unit.into()),
             current_temperature_topic: mapping
                 .current_addr
                 .map(|_| current_temperature_state_topic.as_str()),
@@ -343,8 +363,7 @@ impl Mapping<'_> {
                             .as_ref()
                             .try_into()
                             .expect("This is always two bytes long, as written above");
-                        let new_value = half::f16::from_be_bytes(*raw);
-                        format!("{new_value}")
+                        format!("{}", mapping.unit.translate(raw))
                     };
                     let package = Packet::Publish(Publish {
                         dup: false,
@@ -371,8 +390,7 @@ impl Mapping<'_> {
                             .as_ref()
                             .try_into()
                             .expect("This is always two bytes long, as written above");
-                        let new_value = half::f16::from_be_bytes(*raw);
-                        format!("{new_value}")
+                        format!("{}", mapping.unit.translate(raw))
                     };
                     let package = Packet::Publish(Publish {
                         dup: false,
