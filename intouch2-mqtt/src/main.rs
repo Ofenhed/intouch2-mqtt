@@ -340,7 +340,7 @@ async fn main() -> anyhow::Result<()> {
                             mqtt_sender.send(&package).await?;
                         }
                         #[cfg(debug_assertions)]
-                        {
+                        if args.verbose {
                             let differences: String = differences
                                 .iter()
                                 .map(|(i, d)| format!("{i}: {d}, "))
