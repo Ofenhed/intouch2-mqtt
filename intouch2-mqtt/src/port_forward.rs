@@ -431,7 +431,9 @@ impl PortForward {
                                     unreachable!("How can you get messages from clients if you don't have any clients?")
                                 };
                                 if self.verbose {
-                                    eprintln!("Hello received from {source_addr}")
+                                    if forwards.get_addr(&ForwardAddr::Socket(source_addr)).is_none() {
+                                        eprintln!("New hello received from {source_addr}")
+                                    }
                                 }
                                 let send_clients = send_clients.clone();
                                 let hello_response = hello_response.clone();
