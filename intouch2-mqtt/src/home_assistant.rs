@@ -51,4 +51,6 @@ pub struct ConfigureClimate<'a> {
     pub base: ConfigureBase<'a>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature_state_topic: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_temperature_topic: Option<&'a str>,
 }

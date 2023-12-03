@@ -130,7 +130,8 @@ pub struct FanMapping<'a> {
 #[serde(deny_unknown_fields)]
 pub struct ClimateMapping<'a> {
     pub name: &'a str,
-    pub addr: u16,
+    pub target_addr: u16,
+    pub current_addr: Option<u16>,
 }
 
 impl Mapping<'_> {
@@ -304,10 +305,15 @@ impl Mapping<'_> {
         mqtt: &mut MqttSession,
     ) -> Result<(), MappingError> {
         let unique_id = format!("climate{identifier}");
-        let temperature_state_topic = mqtt.topic("climate", &unique_id, Topic::State);
+        let target_temperature_state_topic = mqtt.topic("climate/target", &unique_id, Topic::State);
+        let current_temperature_state_topic =
+            mqtt.topic("climate/current", &unique_id, Topic::State);
         let config_topic = mqtt.topic("climate", &unique_id, Topic::Config);
         let payload = home_assistant::ConfigureClimate {
-            temperature_state_topic: Some(&temperature_state_topic),
+            temperature_state_topic: Some(&target_temperature_state_topic),
+            current_temperature_topic: mapping
+                .current_addr
+                .map(|_| current_temperature_state_topic.as_str()),
             base: home_assistant::ConfigureBase {
                 name: mapping.name,
                 optimistic: false,
@@ -324,15 +330,15 @@ impl Mapping<'_> {
             payload: &json_payload,
         }))
         .await?;
-        let mut temperature = spa
-            .subscribe(mapping.addr.into()..(mapping.addr + 2).into())
-            .await;
-        {
+        if let Some(current_temp_addr) = mapping.current_addr {
+            let mut current_temperature = spa
+                .subscribe(current_temp_addr.into()..(current_temp_addr + 2).into())
+                .await;
             let mut sender = mqtt.sender();
             self.jobs.spawn(async move {
                 loop {
                     let new_value = {
-                        let ptr = temperature.borrow_and_update();
+                        let ptr = current_temperature.borrow_and_update();
                         let raw: &[u8; 2] = ptr
                             .as_ref()
                             .try_into()
@@ -344,15 +350,43 @@ impl Mapping<'_> {
                         dup: false,
                         qospid: QosPid::AtMostOnce,
                         retain: false,
-                        topic_name: &temperature_state_topic,
+                        topic_name: &current_temperature_state_topic,
                         payload: new_value.as_bytes(),
                     });
                     sender.send(&package).await?;
-                    temperature.changed().await.unwrap(); // TODO: Add error handling
+                    current_temperature.changed().await.unwrap(); // TODO: Add error handling
                 }
             });
         }
-        todo!()
+        {
+            let mut temperature_target = spa
+                .subscribe(mapping.target_addr.into()..(mapping.target_addr + 2).into())
+                .await;
+            let mut sender = mqtt.sender();
+            self.jobs.spawn(async move {
+                loop {
+                    let new_value = {
+                        let ptr = temperature_target.borrow_and_update();
+                        let raw: &[u8; 2] = ptr
+                            .as_ref()
+                            .try_into()
+                            .expect("This is always two bytes long, as written above");
+                        let new_value = half::f16::from_be_bytes(*raw);
+                        format!("{new_value}")
+                    };
+                    let package = Packet::Publish(Publish {
+                        dup: false,
+                        qospid: QosPid::AtMostOnce,
+                        retain: false,
+                        topic_name: &target_temperature_state_topic,
+                        payload: new_value.as_bytes(),
+                    });
+                    sender.send(&package).await?;
+                    temperature_target.changed().await.unwrap(); // TODO: Add error handling
+                }
+            });
+        }
+        Ok(())
     }
 
     pub async fn add_pump(
