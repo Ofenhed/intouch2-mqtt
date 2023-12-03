@@ -1,6 +1,6 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.76"
+version: "0.1.77"
 slug: "intouch2-mqtt"
 init: false
 arch:
@@ -11,9 +11,9 @@ arch:
   - i386
 stage: experimental
 ports:
-  - "10022/udp": 10022
+  10022/UDP: 10022
 ports_description:
-  - "10022/udp": "Port for forwarding (and sniffing) traffic to the Spa system"
+  10022/UDP: "Port for forwarding (and sniffing) traffic to the Spa system"
 services:
   - "mqtt:want"
 ingress: false
