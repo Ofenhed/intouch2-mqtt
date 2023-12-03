@@ -363,7 +363,7 @@ impl Mapping<'_> {
                             .as_ref()
                             .try_into()
                             .expect("This is always two bytes long, as written above");
-                        format!("{}", mapping.unit.translate(raw))
+                        format!("{:.1}", mapping.unit.translate(raw))
                     };
                     let package = Packet::Publish(Publish {
                         dup: false,
@@ -390,7 +390,7 @@ impl Mapping<'_> {
                             .as_ref()
                             .try_into()
                             .expect("This is always two bytes long, as written above");
-                        format!("{}", mapping.unit.translate(raw))
+                        format!("{:.1}", mapping.unit.translate(raw))
                     };
                     let package = Packet::Publish(Publish {
                         dup: false,
