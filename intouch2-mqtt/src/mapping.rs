@@ -210,7 +210,6 @@ impl Mapping<'_> {
                             )
                             .unwrap_or(&empty)
                     };
-                    eprintln!("Data changed, new state is {:?}", reported_value);
                     let package = Packet::Publish(Publish {
                         dup: false,
                         qospid: QosPid::AtMostOnce,
