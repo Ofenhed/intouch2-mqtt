@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::Parser;
 use intouch2_mqtt::{
     home_assistant,
@@ -64,15 +65,14 @@ impl<T: Deserialize<'static>> JsonValue<T> {
         value
     }
 
-    fn leaking_parse(&mut self) -> Result<(), serde_json::error::Error> {
-        let raw_value = {
+    fn leaking_parse(&mut self) -> Result<(), anyhow::Error> {
+        let raw_value: &'static str = {
             let JsonValue::Raw(raw_value) = self else {
                 panic!("leaking_parse can only be used on raw JsonValue")
             };
             Box::leak(Box::from(raw_value.as_ref()))
         };
-        eprintln!("Parsing JSON {raw_value}");
-        let parsed = serde_json::from_str(raw_value)?;
+        let parsed = serde_json::from_str(raw_value).context(raw_value)?;
         *self = JsonValue::Parsed(parsed);
         Ok(())
     }
@@ -171,27 +171,20 @@ impl Command {
                 if let Ok(config_file) = std::fs::read(config_file) {
                     let loaded_config = Box::new(config_file);
                     let json = loaded_config.leak();
-                    println!("Loading config {}", String::from_utf8_lossy(json));
                     match serde_json::from_slice::<Command>(json) {
                         Ok(mut config) => {
                             return {
-                                let lights_result: Result<(), serde_json::error::Error> = config
-                                    .lights
-                                    .iter_mut()
-                                    .map(JsonValue::leaking_parse)
-                                    .collect();
-                                if let Err(err) = lights_result {
-                                    eprintln!("Could not parse light: {err}");
-                                    std::process::exit(1);
+                                for light in config.lights.iter_mut() {
+                                    if let Err(err) = light.leaking_parse() {
+                                        eprintln!("Could not parse light json: {err}");
+                                        std::process::exit(1);
+                                    }
                                 }
-                                let pumps_result: Result<(), serde_json::error::Error> = config
-                                    .pumps
-                                    .iter_mut()
-                                    .map(JsonValue::leaking_parse)
-                                    .collect();
-                                if let Err(err) = pumps_result {
-                                    eprintln!("Could not parse pump: {err}");
-                                    std::process::exit(1);
+                                for pump in config.pumps.iter_mut() {
+                                    if let Err(err) = pump.leaking_parse() {
+                                        eprintln!("Could not parse pump json: {err}");
+                                        std::process::exit(1);
+                                    }
                                 }
                                 config
                             }
