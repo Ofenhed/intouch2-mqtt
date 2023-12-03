@@ -302,7 +302,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         None
     };
-    match (mqtt, &spa, &args.memory_changes_mqtt_target) {
+    match (mqtt, &spa, &args.memory_changes_mqtt_topic) {
         (Some(mut mqtt), Some(spa), memory_change_topic) => {
             if let Some(memory_change_topic) = memory_change_topic {
                 let mut mqtt_sender = mqtt.sender();
