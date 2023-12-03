@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
+    ops::Deref,
 };
 
 use mqttrs::{Packet, Publish, QosPid};
@@ -151,6 +152,13 @@ pub struct ClimateMapping<'a> {
     pub target_addr: u16,
     pub current_addr: Option<u16>,
     pub unit: TemperatureUnit,
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct SelectMapping<'a> {
+    pub name: &'a str,
+    pub mapping: EnumMapping,
 }
 
 impl Mapping<'_> {
@@ -307,6 +315,74 @@ impl Mapping<'_> {
                             .as_deref()
                             .expect("Can only get here if rgb topic is Some"),
                         payload: payload.as_bytes(),
+                    });
+                    sender.send(&package).await?;
+                    spa_data.changed().await.unwrap(); // TODO: Add error handling
+                }
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn add_select(
+        &mut self,
+        identifier: &str,
+        mapping: SelectMapping<'_>,
+        spa: &SpaConnection,
+        mqtt: &mut MqttSession,
+    ) -> Result<(), MappingError> {
+        let unique_id = format!("select{identifier}");
+        let state_topic = mqtt.topic("select", &unique_id, Topic::State);
+        let command_topic = mqtt.topic("select", &unique_id, Topic::Set);
+        let config_topic = mqtt.topic("select", &unique_id, Topic::Config);
+        let SelectMapping { mapping, name } = mapping;
+        let options: Vec<&str> = mapping.mapping.keys().map(Deref::deref).collect();
+        let payload = home_assistant::ConfigureSelect {
+            base: home_assistant::ConfigureBase {
+                name,
+                optimistic: false,
+                unique_id: &unique_id,
+                device: &self.device,
+            },
+            state_topic: Some(&state_topic),
+            command_topic: &command_topic,
+            options,
+        };
+        let json_payload = serde_json::to_vec(&payload)?;
+        mqtt.send(Packet::Publish(Publish {
+            dup: false,
+            qospid: QosPid::AtMostOnce,
+            retain: false,
+            topic_name: &config_topic,
+            payload: &json_payload,
+        }))
+        .await?;
+        {
+            let mut sender = mqtt.sender();
+            let start = mapping.address.into();
+            let end = (mapping.address + mapping.len).into();
+            let mut spa_data = spa.subscribe(start..end).await;
+            self.jobs.spawn(async move {
+                loop {
+                    let null = "".to_string();
+                    let reported_value = {
+                        let new_value = spa_data.borrow_and_update();
+                        mapping
+                            .mapping
+                            .get(
+                                String::from_utf8_lossy(
+                                    &mapping.apply_bitmap(new_value.as_ref()).as_ref(),
+                                )
+                                .as_ref(),
+                            )
+                            .unwrap_or(&null)
+                    };
+                    let package = Packet::Publish(Publish {
+                        dup: false,
+                        qospid: QosPid::AtMostOnce,
+                        retain: false,
+                        topic_name: &state_topic,
+                        payload: reported_value.as_bytes(),
                     });
                     sender.send(&package).await?;
                     spa_data.changed().await.unwrap(); // TODO: Add error handling

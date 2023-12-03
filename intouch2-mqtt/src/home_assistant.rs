@@ -56,3 +56,13 @@ pub struct ConfigureClimate<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature_unit: Option<&'a str>,
 }
+
+#[derive(serde::Serialize)]
+pub struct ConfigureSelect<'a> {
+    #[serde(flatten)]
+    pub base: ConfigureBase<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_topic: Option<&'a str>,
+    pub command_topic: &'a str,
+    pub options: Vec<&'a str>,
+}

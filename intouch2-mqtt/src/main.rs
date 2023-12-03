@@ -162,10 +162,15 @@ struct Command {
     #[serde(rename = "pumps_json")]
     pumps: Vec<JsonValue<mapping::FanMapping<'static>>>,
 
-    /// A mapping of all pumps which should be mapped from the Spa to MQTT.
+    /// A mapping of the temperature of the Spa to MQTT.
     #[arg(skip)]
     #[serde(rename = "temperatures_json")]
     temperatures: Vec<JsonValue<mapping::ClimateMapping<'static>>>,
+
+    /// A mapping of custom select lists from the Spa to MQTT.
+    #[arg(skip)]
+    #[serde(rename = "selects_json")]
+    selects: Vec<JsonValue<mapping::SelectMapping<'static>>>,
 }
 
 impl Command {
@@ -195,6 +200,12 @@ impl Command {
                                 for temperature in config.temperatures.iter_mut() {
                                     if let Err(err) = temperature.leaking_parse() {
                                         eprintln!("Could not parse temperature json: {err}");
+                                        std::process::exit(1);
+                                    }
+                                }
+                                for select in config.selects.iter_mut() {
+                                    if let Err(err) = select.leaking_parse() {
+                                        eprintln!("Could not parse select json: {err}");
                                         std::process::exit(1);
                                     }
                                 }
@@ -396,6 +407,17 @@ async fn main() -> anyhow::Result<()> {
                     .add_climate(
                         &format!("climate{counter}"),
                         temp.unwrap().clone(),
+                        &spa,
+                        &mut mqtt,
+                    )
+                    .await?;
+            }
+            for select in &args.selects {
+                counter += 1;
+                mapping
+                    .add_select(
+                        &format!("select{counter}"),
+                        select.unwrap().clone(),
                         &spa,
                         &mut mqtt,
                     )
