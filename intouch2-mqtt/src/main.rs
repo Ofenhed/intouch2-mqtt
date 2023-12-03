@@ -9,6 +9,7 @@ use intouch2_mqtt::{
 };
 use std::{
     net::IpAddr,
+    path::PathBuf,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -308,6 +309,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut mqtt_sender = mqtt.sender();
                 let len = spa.len().await;
                 let mut spa_data = spa.subscribe(0..len).await;
+                let memory_change_topic = PathBuf::from(memory_change_topic.as_ref());
                 join_set.spawn(async move {
                     let mut previous: Box<[u8]> = spa_data.borrow_and_update().as_ref().into();
                     let mut differences = Vec::with_capacity(len);
@@ -325,12 +327,14 @@ async fn main() -> anyhow::Result<()> {
                         }
                         for (position, value) in differences.iter() {
                             let payload = format!("{value}");
-                            let topic_name = format!("{memory_change_topic}/{position}");
+                            let topic_name = memory_change_topic.join(format!("{position}"));
                             let package = mqttrs::Packet::Publish(mqttrs::Publish {
                                 dup: false,
                                 qospid: mqttrs::QosPid::AtMostOnce,
                                 retain: false,
-                                topic_name: &topic_name,
+                                topic_name: topic_name
+                                    .to_str()
+                                    .expect("All paths will be valid UTF-8"),
                                 payload: payload.as_bytes(),
                             });
                             mqtt_sender.send(&package).await?;
