@@ -15,4 +15,5 @@ RUN cargo build --bin intouch2-mqtt
 
 FROM ${BUILD_FROM}
 COPY --from=base /build/target/debug/intouch2-mqtt /bin/intouch2-mqtt
+EXPOSE 10022/udp
 CMD [ "/bin/intouch2-mqtt" ]
