@@ -303,10 +303,9 @@ impl Mapping<'_> {
         spa: &SpaConnection,
         mqtt: &mut MqttSession,
     ) -> Result<(), MappingError> {
-        let unique_id = format!("temp{identifier}");
-        let temperature_state_topic = mqtt.topic("sensor", &unique_id, Topic::State);
-        let config_topic = mqtt.topic("sensor", &unique_id, Topic::Config);
-        let mut sender = mqtt.sender();
+        let unique_id = format!("climate{identifier}");
+        let temperature_state_topic = mqtt.topic("climate", &unique_id, Topic::State);
+        let config_topic = mqtt.topic("climate", &unique_id, Topic::Config);
         let payload = home_assistant::ConfigureClimate {
             temperature_state_topic: Some(&temperature_state_topic),
             base: home_assistant::ConfigureBase {
@@ -317,15 +316,14 @@ impl Mapping<'_> {
             },
         };
         let json_payload = serde_json::to_vec(&payload)?;
-        sender
-            .send(&Packet::Publish(Publish {
-                dup: false,
-                qospid: QosPid::AtMostOnce,
-                retain: false,
-                topic_name: &config_topic,
-                payload: &json_payload,
-            }))
-            .await?;
+        mqtt.send(Packet::Publish(Publish {
+            dup: false,
+            qospid: QosPid::AtMostOnce,
+            retain: false,
+            topic_name: &config_topic,
+            payload: &json_payload,
+        }))
+        .await?;
         let mut temperature = spa
             .subscribe(mapping.addr.into()..(mapping.addr + 2).into())
             .await;
