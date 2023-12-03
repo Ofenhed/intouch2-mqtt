@@ -1,6 +1,6 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.94"
+version: "0.1.95"
 slug: "intouch2-mqtt"
 init: false
 arch:
@@ -36,4 +36,6 @@ schema:
   pumps_json:
     - str
   temperatures_json:
+    - str
+  selects_json:
     - str
