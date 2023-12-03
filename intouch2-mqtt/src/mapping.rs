@@ -126,6 +126,13 @@ pub struct FanMapping<'a> {
     pub percent_mapping: Option<EnumMapping>,
 }
 
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct ClimateMapping<'a> {
+    pub name: &'a str,
+    pub addr: u16,
+}
+
 impl Mapping<'_> {
     pub async fn add_light(
         &mut self,
@@ -165,8 +172,6 @@ impl Mapping<'_> {
             .as_ref()
             .map(|x| x.iter().map(AsRef::as_ref).collect());
         let payload = home_assistant::ConfigureLight {
-            unique_id: &unique_id,
-            device: &self.device,
             command_topic: &command_topic,
             rgb_state_topic: rgb_state_topic.as_deref(),
             rgb_command_topic: rgb_command_topic.as_deref(),
@@ -178,6 +183,8 @@ impl Mapping<'_> {
             base: home_assistant::ConfigureBase {
                 name: mapping.name,
                 optimistic: false,
+                unique_id: &unique_id,
+                device: &self.device,
             },
         };
         let json_payload = serde_json::to_vec(&payload)?;
@@ -289,6 +296,67 @@ impl Mapping<'_> {
         Ok(())
     }
 
+    pub async fn add_climate(
+        &mut self,
+        identifier: &str,
+        mapping: ClimateMapping<'_>,
+        spa: &SpaConnection,
+        mqtt: &mut MqttSession,
+    ) -> Result<(), MappingError> {
+        let unique_id = format!("temp{identifier}");
+        let temperature_state_topic = mqtt.topic("sensor", &unique_id, Topic::State);
+        let config_topic = mqtt.topic("sensor", &unique_id, Topic::Config);
+        let mut sender = mqtt.sender();
+        let payload = home_assistant::ConfigureClimate {
+            temperature_state_topic: Some(&temperature_state_topic),
+            base: home_assistant::ConfigureBase {
+                name: mapping.name,
+                optimistic: false,
+                unique_id: &unique_id,
+                device: &self.device,
+            },
+        };
+        let json_payload = serde_json::to_vec(&payload)?;
+        sender
+            .send(&Packet::Publish(Publish {
+                dup: false,
+                qospid: QosPid::AtMostOnce,
+                retain: false,
+                topic_name: &config_topic,
+                payload: &json_payload,
+            }))
+            .await?;
+        let mut temperature = spa
+            .subscribe(mapping.addr.into()..(mapping.addr + 2).into())
+            .await;
+        {
+            let mut sender = mqtt.sender();
+            self.jobs.spawn(async move {
+                loop {
+                    let new_value = {
+                        let ptr = temperature.borrow_and_update();
+                        let raw: &[u8; 2] = ptr
+                            .as_ref()
+                            .try_into()
+                            .expect("This is always two bytes long, as written above");
+                        let new_value = half::f16::from_be_bytes(*raw);
+                        format!("{new_value}")
+                    };
+                    let package = Packet::Publish(Publish {
+                        dup: false,
+                        qospid: QosPid::AtMostOnce,
+                        retain: false,
+                        topic_name: &temperature_state_topic,
+                        payload: new_value.as_bytes(),
+                    });
+                    sender.send(&package).await?;
+                    temperature.changed().await.unwrap(); // TODO: Add error handling
+                }
+            });
+        }
+        todo!()
+    }
+
     pub async fn add_pump(
         &mut self,
         identifier: &str,
@@ -310,8 +378,6 @@ impl Mapping<'_> {
                 (None, None)
             };
         let payload = home_assistant::ConfigureFan {
-            unique_id: &unique_id,
-            device: &self.device,
             command_topic: &command_topic,
             state_topic: Some(&state_topic),
             percentage_command_topic: percent_command_topic.as_deref(),
@@ -319,6 +385,8 @@ impl Mapping<'_> {
             base: home_assistant::ConfigureBase {
                 name: mapping.name,
                 optimistic: false,
+                unique_id: &unique_id,
+                device: &self.device,
             },
         };
         let json_payload = serde_json::to_vec(&payload)?;

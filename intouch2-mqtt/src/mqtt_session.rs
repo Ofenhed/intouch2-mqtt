@@ -105,6 +105,7 @@ pub enum Topic {
     None,
 }
 
+#[derive(Clone)]
 pub struct PacketSender {
     sender: mpsc::Sender<Box<[u8]>>,
     buffer: Box<[u8; 4096]>,

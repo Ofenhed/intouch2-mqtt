@@ -8,6 +8,8 @@ pub struct ConfigureDevice<'a> {
 pub struct ConfigureBase<'a> {
     pub name: &'a str,
     pub optimistic: bool,
+    pub unique_id: &'a str,
+    pub device: &'a ConfigureDevice<'a>,
 }
 
 #[derive(serde::Serialize)]
@@ -27,9 +29,7 @@ pub struct ConfigureLight<'a> {
     pub rgb_state_topic: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effect_list: Option<Box<[&'a str]>>,
-    pub unique_id: &'a str,
     pub color_mode: Option<&'a str>,
-    pub device: &'a ConfigureDevice<'a>,
 }
 
 #[derive(serde::Serialize)]
@@ -43,6 +43,12 @@ pub struct ConfigureFan<'a> {
     pub percentage_command_topic: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub percentage_state_topic: Option<&'a str>,
-    pub unique_id: &'a str,
-    pub device: &'a ConfigureDevice<'a>,
+}
+
+#[derive(serde::Serialize)]
+pub struct ConfigureClimate<'a> {
+    #[serde(flatten)]
+    pub base: ConfigureBase<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature_state_topic: Option<&'a str>,
 }

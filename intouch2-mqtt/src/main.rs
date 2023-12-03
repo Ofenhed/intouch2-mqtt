@@ -161,6 +161,11 @@ struct Command {
     #[arg(skip)]
     #[serde(rename = "pumps_json")]
     pumps: Vec<JsonValue<mapping::FanMapping<'static>>>,
+
+    /// A mapping of all pumps which should be mapped from the Spa to MQTT.
+    #[arg(skip)]
+    #[serde(rename = "temperatures_json")]
+    temperatures: Vec<JsonValue<mapping::ClimateMapping<'static>>>,
 }
 
 impl Command {
@@ -184,6 +189,12 @@ impl Command {
                                 for pump in config.pumps.iter_mut() {
                                     if let Err(err) = pump.leaking_parse() {
                                         eprintln!("Could not parse pump json: {err}");
+                                        std::process::exit(1);
+                                    }
+                                }
+                                for temperature in config.temperatures.iter_mut() {
+                                    if let Err(err) = temperature.leaking_parse() {
+                                        eprintln!("Could not parse temperature json: {err}");
                                         std::process::exit(1);
                                     }
                                 }
@@ -374,6 +385,17 @@ async fn main() -> anyhow::Result<()> {
                     .add_pump(
                         &format!("pump{counter}"),
                         pump.unwrap().clone(),
+                        &spa,
+                        &mut mqtt,
+                    )
+                    .await?;
+            }
+            for temp in &args.temperatures {
+                counter += 1;
+                mapping
+                    .add_climate(
+                        &format!("climate{counter}"),
+                        temp.unwrap().clone(),
                         &spa,
                         &mut mqtt,
                     )
