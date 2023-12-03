@@ -1,6 +1,6 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.73"
+version: "0.1.74"
 slug: "intouch2-mqtt"
 init: false
 arch:
@@ -10,6 +10,8 @@ arch:
   - amd64
   - i386
 stage: experimental
+ports:
+  - 10022/udp
 services:
   - "mqtt:want"
 ingress: false
@@ -19,6 +21,7 @@ schema:
   spa_memory_size: int(1,65535)
   spa_udp_timeout: int(1,600)?
   spa_handshake_timeout: int(1,60)?
+  spa_forward_listen_ip: str?
   verbose: bool?
   dump_traffic: bool?
   memory_changes_mqtt_topic: str?

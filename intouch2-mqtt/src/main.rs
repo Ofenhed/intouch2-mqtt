@@ -20,9 +20,6 @@ use tokio::{
     time::timeout,
 };
 
-// TODO: See https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
-// Do NOT send a retained message, as it will be saved by mosquitto as a ghost device
-
 mod default_values {
     use super::*;
     pub fn spa_name() -> Arc<str> {
@@ -102,10 +99,10 @@ struct Command {
     #[serde(default = "default_values::udp_timeout")]
     #[arg(default_value = "300")]
     spa_udp_timeout: u16,
-    #[serde(default = "default_values::handshake_timeout")]
-    #[arg(default_value = "10", alias = "handshake-timeout")]
 
     /// Timeout for the first Hello packet to the Spa.
+    #[serde(default = "default_values::handshake_timeout")]
+    #[arg(default_value = "10", alias = "handshake-timeout")]
     spa_handshake_timeout: u16,
     #[serde(default = "default_values::r#false")]
     #[arg(short, long)]
@@ -115,18 +112,20 @@ struct Command {
 
     /// Dump all traffic to stdout
     dump_traffic: bool,
-    #[arg(alias = "forward-ip", required = false)]
 
     /// Forward traffic from a local port to the Spa. This can be used to figure out
     /// spa_memory_size, or for general debugging.
+    #[arg(alias = "forward-ip", required = false)]
     spa_forward_listen_ip: Option<IpAddr>,
-    #[serde(default = "default_values::spa_port")]
+
+    #[serde(skip, default = "default_values::spa_port")]
     #[arg(default_value = "10022", alias = "forward-port")]
     spa_forward_listen_port: u16,
-    #[arg(long)]
 
     /// The MQTT server address and port number
+    #[arg(long)]
     mqtt_target: Option<Arc<str>>,
+
     #[arg(
         short = 'u',
         requires("mqtt-password"),
