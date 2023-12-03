@@ -133,6 +133,9 @@ impl PortForward {
     pub async fn run(self) -> Result<(), PortForwardError> {
         let target_bind_addr = unspecified_source_for_taget(self.target_addr);
         let (send_clients, recv_clients) = if let Some(listen_addr) = self.listen_addr {
+            if self.verbose {
+                eprintln!("Listening on {listen_addr}");
+            }
             let sock_clients = StaticBox::new(UdpSocket::bind(listen_addr).await?);
             let send_clients = Arc::new(Mutex::new(sock_clients.to_no_clone()));
             let recv_clients = sock_clients.to_no_clone();
