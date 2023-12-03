@@ -102,7 +102,7 @@ fn unpack_cell<'a, T>(
 
 fn unpack_owned_cell_mut<'a, T>(
     from: Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>,
-) -> &'a ForwardMappingInfo<T> {
+) -> &'a mut ForwardMappingInfo<T> {
     unsafe { &mut *from.get() }
 }
 
@@ -184,11 +184,11 @@ impl<T: Send + Sync> ForwardMapping<T> {
         addr: impl Borrow<PeerAddrType> + Into<Arc<PeerAddrType>>,
         id: impl Borrow<PeerIdType> + Into<Arc<PeerIdType>>,
         context: T,
-    ) -> &'a ForwardMappingInfo<T> {
+    ) -> &'a mut ForwardMappingInfo<T> {
         if let Some(from_addr) = self
             .addrs
-            .get(addr.borrow())
-            .map(|x| unpack_owned_cell(x.clone()))
+            .get_mut(addr.borrow())
+            .map(|x| unpack_owned_cell_mut(x.clone()))
         {
             if matches!(self.ids.get(id.borrow()).map(unpack_cell), Some(from_id) if std::ptr::eq(from_addr, from_id))
             {
@@ -207,9 +207,9 @@ impl<T: Send + Sync> ForwardMapping<T> {
         let reply = match self.addrs.entry(addr) {
             hash_map::Entry::Occupied(mut entry) => {
                 entry.insert(info);
-                unpack_owned_cell(entry.get().clone())
+                unpack_owned_cell_mut(entry.get().clone())
             }
-            hash_map::Entry::Vacant(entry) => unpack_cell(entry.insert(info)),
+            hash_map::Entry::Vacant(entry) => unpack_cell_mut(entry.insert(info)),
         };
         reply
     }

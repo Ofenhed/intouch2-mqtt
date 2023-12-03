@@ -5,6 +5,7 @@ use intouch2::{
 };
 use std::{
     borrow::Cow,
+    cmp::min,
     mem::{take, MaybeUninit},
     net::SocketAddr,
     sync::Arc,
@@ -14,7 +15,7 @@ use tokio::{
     net::UdpSocket,
     sync::{broadcast, mpsc, Mutex, RwLock},
     task::JoinSet,
-    time::{timeout_at, Instant},
+    time::{self, timeout_at, Instant},
 };
 
 use crate::{
@@ -186,6 +187,7 @@ impl PortForward {
         let send_spa = Arc::new(Mutex::new(sock_spa.to_no_clone()));
         let recv_spa = sock_spa.to_no_clone();
         drop(sock_spa);
+        #[derive(Debug)]
         enum SocketData {
             FromClient {
                 source_addr: SocketAddr,
@@ -201,10 +203,7 @@ impl PortForward {
                 recv_pipe: Option<mpsc::Receiver<NetworkPackage<'static>>>,
             },
             PipeDied,
-            Timeout {
-                // TODO: Add timeout detection
-                client_addr: ForwardAddr,
-            },
+            Timeout,
             SpawnSpaListener {
                 recv_sock: Option<NoClone<UdpSocket>>,
             },
@@ -219,6 +218,7 @@ impl PortForward {
             },
         }
         let mut workers = JoinSet::<Result<SocketData, PortForwardError>>::new();
+        workers.spawn(async { Ok(SocketData::Timeout) });
         workers.spawn(async {
             Ok(SocketData::SpawnSpaListener {
                 recv_sock: Some(recv_spa),
@@ -310,6 +310,24 @@ impl PortForward {
                             }
                         });
                     }
+                    SocketData::Timeout => {
+                        let (timeouts, next_timeout) =
+                            forwards.clear_timeouts(self.handshake_timeout, self.udp_timeout);
+                        if self.verbose {
+                            for client in timeouts.iter() {
+                                eprintln!("Client {client:?} timed out")
+                            }
+                        }
+                        workers.spawn(async move {
+                            if let Some(next_timeout) = next_timeout {
+                                time::sleep_until(next_timeout).await;
+                            } else {
+                                time::sleep(min(self.handshake_timeout, self.udp_timeout)).await;
+                            }
+                            Ok(SocketData::Timeout)
+                        });
+                        continue;
+                    }
                     _ => (),
                 }
                 match job_result {
@@ -359,7 +377,9 @@ impl PortForward {
                                     eprintln!("{source_addr} -> {}", content.display());
                                 }
                                 let count_before = forwards.len();
-                                forwards.insert(ForwardAddr::Socket(source_addr), &**src, ());
+                                let info =
+                                    forwards.insert(ForwardAddr::Socket(source_addr), &**src, ());
+                                info.did_forward();
                                 if self.verbose && count_before != forwards.len() {
                                     eprintln!(
                                         "New client {} at {}",
@@ -428,7 +448,8 @@ impl PortForward {
                                 ..
                             },
                         ) => {
-                            if let Some(forward_info) = forwards.get_id(&dst) {
+                            if let Some(ref mut forward_info) = forwards.get_id_mut(&dst) {
+                                forward_info.got_reply();
                                 match *forward_info.addr() {
                                     ForwardAddr::Pipe => {
                                         let Some(pipe) = &send_pipe else {
@@ -502,10 +523,6 @@ impl PortForward {
                             }
                         }
                     },
-                    SocketData::Timeout { client_addr } => {
-                        eprintln!("Timeout for {}", client_addr);
-                        forwards.remove_addr(&client_addr);
-                    }
                     SocketData::SpawnClientListener { .. }
                     | SocketData::SpawnSpaListener { .. }
                     | SocketData::SpawnPipeListener { .. } => (),
@@ -514,8 +531,9 @@ impl PortForward {
                             eprintln!("Internal Spa pipe disconnected")
                         }
                     }
-                    SocketData::SendCompleted { .. } => {
-                        unreachable!("SendCompleted is filtered out above")
+                    filtered @ SocketData::SendCompleted { .. }
+                    | filtered @ SocketData::Timeout => {
+                        unreachable!("{filtered:?} is filtered out above")
                     }
                 }
             }

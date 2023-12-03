@@ -34,6 +34,7 @@ pub struct StaticBox<T> {
     inner: Arc<T>,
 }
 
+#[derive(Debug)]
 pub struct NoClone<T> {
     inner: Arc<T>,
 }
