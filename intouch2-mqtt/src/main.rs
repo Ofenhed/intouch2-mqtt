@@ -154,22 +154,22 @@ struct Command {
 
     /// A mapping of all lights which should be mapped from the Spa to MQTT.
     #[arg(skip)]
-    #[serde(rename = "lights_json")]
+    #[serde(rename = "lights_json", default)]
     lights: Vec<JsonValue<mapping::LightMapping<'static>>>,
 
     /// A mapping of all pumps which should be mapped from the Spa to MQTT.
     #[arg(skip)]
-    #[serde(rename = "pumps_json")]
+    #[serde(rename = "pumps_json", default)]
     pumps: Vec<JsonValue<mapping::FanMapping<'static>>>,
 
     /// A mapping of the temperature of the Spa to MQTT.
     #[arg(skip)]
-    #[serde(rename = "temperatures_json")]
+    #[serde(rename = "temperatures_json", default)]
     temperatures: Vec<JsonValue<mapping::ClimateMapping<'static>>>,
 
     /// A mapping of custom select lists from the Spa to MQTT.
     #[arg(skip)]
-    #[serde(rename = "selects_json")]
+    #[serde(rename = "selects_json", default)]
     selects: Vec<JsonValue<mapping::SelectMapping<'static>>>,
 }
 
