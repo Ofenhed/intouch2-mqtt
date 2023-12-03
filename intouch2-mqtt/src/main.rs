@@ -147,9 +147,9 @@ struct Command {
     mqtt_discovery_topic: Arc<str>,
 
     /// Set this to dump memory changes to the specified MQTT topic as
-    /// "{memory_changes_mqtt_target}/{changed_address}".
+    /// "{memory_changes_mqtt_topic}/{changed_address}".
     #[arg(long)]
-    memory_changes_mqtt_target: Option<Arc<str>>,
+    memory_changes_mqtt_topic: Option<Arc<str>>,
 
     /// A mapping of all lights which should be mapped from the Spa to MQTT.
     #[arg(skip)]
@@ -224,7 +224,6 @@ pub enum Error {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Command::get();
-    eprintln!("Args: {args:?}");
     let mqtt = if let Some(target) = &args.mqtt_target {
         let mut mqtt_addrs = net::lookup_host(target.as_ref()).await?;
         let mqtt_addr = if let Some(addr) = mqtt_addrs.next() {
