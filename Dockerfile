@@ -5,10 +5,16 @@ RUN apk add --no-cache musl-dev
 
 RUN mkdir /build/
 WORKDIR /build/
+
 COPY Cargo.lock Cargo.toml ./
-RUN cargo new --lib intouch2-mqtt
-COPY intouch2 ./intouch2
+RUN cargo new --bin intouch2-mqtt
+RUN cargo new --lib intouch2
+COPY intouch2/Cargo.toml ./intouch2/Cargo.toml
+COPY intouch2-mqtt/Cargo.toml ./intouch2-mqtt/Cargo.toml
 RUN cargo build
+
+COPY intouch2/ ./intouch2/
+RUN cargo build -p intouch2
 
 COPY intouch2-mqtt ./intouch2-mqtt
 RUN cargo build --bin intouch2-mqtt
