@@ -70,8 +70,8 @@ pub enum MappingError {
     Runtime(#[from] tokio::task::JoinError),
 }
 
-pub struct Mapping<'a> {
-    device: home_assistant::ConfigureDevice<'a>,
+pub struct Mapping {
+    device: home_assistant::ConfigureDevice,
     jobs: JoinSet<Result<(), MappingError>>,
 }
 
@@ -161,7 +161,188 @@ pub struct SelectMapping<'a> {
     pub mapping: EnumMapping,
 }
 
-impl Mapping<'_> {
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub enum ValueType {
+    U8,
+    U16,
+    Raw(usize),
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub enum MappingType {
+    U8 {
+        u8_addr: u16,
+    },
+    U16 {
+        u16_addr: u16,
+    },
+    Array {
+        addr: u16,
+        len: u16,
+    },
+    #[serde(untagged)]
+    Static(serde_json::Value),
+}
+
+impl MappingType {
+    pub fn is_static(&self) -> bool {
+        matches!(self, Self::Static(_))
+    }
+    pub fn range(&self) -> Option<std::ops::Range<usize>> {
+        let start = match self {
+            Self::U8 { u8_addr: start }
+            | Self::U16 { u16_addr: start }
+            | Self::Array { addr: start, .. } => usize::from(*start),
+            Self::Static(_) => return None,
+        };
+        let len = match self {
+            Self::U8 { .. } => 1,
+            Self::U16 { .. } => 2,
+            Self::Array { len, .. } => usize::from(*len),
+            Self::Static(_) => unreachable!(),
+        };
+        let end = start + len;
+        Some(start..end)
+    }
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields, untagged)]
+pub enum MqttType {
+    State { state: MappingType },
+    Value(serde_json::Value),
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct GenericMapping {
+    pub mqtt_type: &'static str,
+    pub name: &'static str,
+    pub unique_id: &'static str,
+    // pub topics: HashMap<&'a str, MappingType<'a>>,
+    #[serde(flatten)]
+    pub mqtt_values: HashMap<&'static str, MqttType>,
+}
+
+impl GenericMapping {
+    pub fn config_is_static(&self) -> bool {
+        true
+        // self.mqtt_values.values().find(|x| !x.is_static()).is_none()
+    }
+}
+
+impl Mapping {
+    pub async fn add_generic(
+        &mut self,
+        mapping: GenericMapping,
+        spa: &SpaConnection,
+        mqtt: &mut MqttSession,
+    ) -> Result<(), MappingError> {
+        let config_topic = mqtt.topic(&mapping.mqtt_type, &mapping.unique_id, Topic::Config);
+        let mut counter = 0;
+        let topics = mqtt.topic_generator();
+        let GenericMapping {
+            mqtt_type,
+            name: mqtt_name,
+            unique_id,
+            mqtt_values,
+        } = mapping;
+        let mut next_state_topic = || {
+            counter += 1;
+            topics.topic(&mqtt_type, &format!("{mqtt_name}/{counter}"), Topic::State)
+        };
+
+        let device = self.device.clone();
+        let json_config = {
+            let mut config = home_assistant::ConfigureGeneric {
+                base: home_assistant::ConfigureBase {
+                    name: &mqtt_name,
+                    unique_id: &unique_id,
+                    device: &device,
+                },
+                args: Default::default(),
+            };
+            for (key, value) in &mqtt_values {
+                match value {
+                    MqttType::State { state } => {
+                        let topic = next_state_topic();
+                        let mut sender = mqtt.sender();
+                        {
+                            let topic = topic.clone();
+                            let state = state.clone();
+                            let mut subscription = if let Some(range) = state.range() {
+                                Some(spa.subscribe(range).await)
+                            } else {
+                                None
+                            };
+                            self.jobs.spawn(async move {
+                                loop {
+                                    let reported_value = match (
+                                        &state,
+                                        subscription.as_mut().map(|x| x.borrow_and_update()),
+                                    ) {
+                                        (MappingType::Static(value), None) => value.clone(),
+                                        (MappingType::Static(_), Some(_)) => unreachable!(),
+                                        (MappingType::U8 { .. }, Some(data)) => {
+                                            let new_value: &[u8; 1] = data
+                                                .as_ref()
+                                                .try_into()
+                                                .expect("This will always be 1 byte");
+                                            serde_json::Value::Number(new_value[0].into())
+                                        }
+                                        (MappingType::U16 { .. }, Some(data)) => {
+                                            let new_value: &[u8; 2] = data
+                                                .as_ref()
+                                                .try_into()
+                                                .expect("This will always be 2 bytes");
+                                            serde_json::Value::Number(
+                                                u16::from_be_bytes(*new_value).into(),
+                                            )
+                                        }
+                                        (MappingType::Array { .. }, Some(data)) => {
+                                            serde_json::Value::Array(
+                                                data.iter()
+                                                    .map(|x| serde_json::Value::Number((*x).into()))
+                                                    .collect(),
+                                            )
+                                        }
+                                        (_, None) => unreachable!(),
+                                    };
+                                    let payload = serde_json::to_vec(&reported_value)?;
+                                    let package = Packet::Publish(Publish {
+                                        dup: false,
+                                        qospid: QosPid::AtMostOnce,
+                                        retain: false,
+                                        topic_name: &topic,
+                                        payload: &payload,
+                                    });
+                                    sender.send(&package).await?;
+                                    if let Some(subscription) = &mut subscription {
+                                        subscription.changed().await.unwrap();
+                                    } else {
+                                        return Ok(());
+                                    }
+                                }
+                            });
+                        }
+                        config.args.insert(key.as_ref(), topic.into())
+                    }
+                    MqttType::Value(value) => config.args.insert(key.as_ref(), value.clone()),
+                };
+            }
+            serde_json::to_vec(&config)?
+        };
+        let config_packet = Packet::Publish(Publish {
+            dup: false,
+            qospid: QosPid::AtMostOnce,
+            retain: false,
+            topic_name: &config_topic,
+            payload: &json_config,
+        });
+        mqtt.send(config_packet).await?;
+        Ok(())
+    }
     pub async fn add_light(
         &mut self,
         identifier: &str,
@@ -208,9 +389,9 @@ impl Mapping<'_> {
             effect_state_topic: effects_state_topic.as_deref(),
             effect_command_topic: effects_command_topic.as_deref(),
             color_mode,
+            optimistic: false,
             base: home_assistant::ConfigureBase {
                 name: mapping.name,
-                optimistic: false,
                 unique_id: &unique_id,
                 device: &self.device,
             },
@@ -340,10 +521,10 @@ impl Mapping<'_> {
         let payload = home_assistant::ConfigureSelect {
             base: home_assistant::ConfigureBase {
                 name,
-                optimistic: false,
                 unique_id: &unique_id,
                 device: &self.device,
             },
+            optimistic: false,
             state_topic: Some(&state_topic),
             command_topic: &command_topic,
             options,
@@ -407,12 +588,12 @@ impl Mapping<'_> {
         let payload = home_assistant::ConfigureClimate {
             temperature_state_topic: Some(&target_temperature_state_topic),
             temperature_unit: Some(mapping.unit.into()),
+            optimistic: false,
             current_temperature_topic: mapping
                 .current_addr
                 .map(|_| current_temperature_state_topic.as_str()),
             base: home_assistant::ConfigureBase {
                 name: mapping.name,
-                optimistic: false,
                 unique_id: &unique_id,
                 device: &self.device,
             },
@@ -508,9 +689,9 @@ impl Mapping<'_> {
             state_topic: Some(&state_topic),
             percentage_command_topic: percent_command_topic.as_deref(),
             percentage_state_topic: percent_state_topic.as_deref(),
+            optimistic: false,
             base: home_assistant::ConfigureBase {
                 name: mapping.name,
-                optimistic: false,
                 unique_id: &unique_id,
                 device: &self.device,
             },
@@ -602,8 +783,8 @@ impl Mapping<'_> {
     }
 }
 
-impl<'a> Mapping<'a> {
-    pub fn new(device: home_assistant::ConfigureDevice<'a>) -> Result<Self, MappingError> {
+impl Mapping {
+    pub fn new(device: home_assistant::ConfigureDevice) -> Result<Self, MappingError> {
         let jobs = JoinSet::new();
         Ok(Self { jobs, device })
     }

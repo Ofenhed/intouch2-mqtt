@@ -119,7 +119,10 @@ impl PacketSender {
     }
 }
 
-impl Session {
+pub struct TopicGenerator {
+    discovery_topic: Arc<str>,
+}
+impl TopicGenerator {
     #[inline(always)]
     pub fn topic(&self, r#type: &str, name: &str, topic: Topic) -> String {
         if matches!(topic, Topic::None) {
@@ -135,7 +138,18 @@ impl Session {
             )
         }
     }
+}
 
+impl Session {
+    pub fn topic_generator(&self) -> TopicGenerator {
+        TopicGenerator {
+            discovery_topic: self.discovery_topic.clone(),
+        }
+    }
+    #[inline(always)]
+    pub fn topic(&self, r#type: &str, name: &str, topic: Topic) -> String {
+        self.topic_generator().topic(r#type, name, topic)
+    }
     fn next_pid(&mut self) -> Pid {
         let mut new_pid = self.pid.add(1);
         std::mem::swap(&mut self.pid, &mut new_pid);

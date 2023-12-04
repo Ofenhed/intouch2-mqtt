@@ -171,6 +171,10 @@ struct Command {
     #[arg(skip)]
     #[serde(rename = "selects_json", default)]
     selects: Vec<JsonValue<mapping::SelectMapping<'static>>>,
+
+    #[arg(skip)]
+    #[serde(rename = "entities_json", default)]
+    entities: Vec<JsonValue<mapping::GenericMapping>>,
 }
 
 impl Command {
@@ -205,6 +209,12 @@ impl Command {
                                 }
                                 for select in config.selects.iter_mut() {
                                     if let Err(err) = select.leaking_parse() {
+                                        eprintln!("Could not parse select json: {err}");
+                                        std::process::exit(1);
+                                    }
+                                }
+                                for entity in config.entities.iter_mut() {
+                                    if let Err(err) = entity.leaking_parse() {
                                         eprintln!("Could not parse select json: {err}");
                                         std::process::exit(1);
                                     }
@@ -374,8 +384,8 @@ async fn main() -> anyhow::Result<()> {
             }
             let spa_name = String::from_utf8_lossy(spa.name());
             let mut mapping = Mapping::new(home_assistant::ConfigureDevice {
-                identifiers: Box::from([&*args.spa_id]),
-                name: spa_name.to_string(),
+                identifiers: Box::from([args.spa_id.clone()]),
+                name: spa_name.into(),
             })?;
             let mut counter = 0;
             for light in &args.lights {
@@ -401,6 +411,7 @@ async fn main() -> anyhow::Result<()> {
                     )
                     .await?;
             }
+            counter = 0;
             for temp in &args.temperatures {
                 counter += 1;
                 mapping
@@ -412,6 +423,7 @@ async fn main() -> anyhow::Result<()> {
                     )
                     .await?;
             }
+            counter = 0;
             for select in &args.selects {
                 counter += 1;
                 mapping
@@ -421,6 +433,11 @@ async fn main() -> anyhow::Result<()> {
                         &spa,
                         &mut mqtt,
                     )
+                    .await?;
+            }
+            for entity in &args.entities {
+                mapping
+                    .add_generic(entity.unwrap().clone(), &spa, &mut mqtt)
                     .await?;
             }
             join_set.spawn(async move {
