@@ -26,6 +26,7 @@ pub enum MqttAuth<'a> {
 
 pub struct SessionBuilder<'a> {
     pub discovery_topic: Arc<str>,
+    pub availability_topic: Option<Arc<str>>,
     pub target: SocketAddr,
     pub auth: MqttAuth<'a>,
     pub keep_alive: u16,
@@ -67,6 +68,7 @@ pub struct Session {
     stream: TcpStream,
     buffer: Box<[u8; 4096]>,
     discovery_topic: Arc<str>,
+    availability_topic: Option<Arc<str>>,
     pid: Pid,
     send_queue: mpsc::Receiver<Box<[u8]>>,
     send_queue_sender: mpsc::Sender<Box<[u8]>>,
@@ -235,6 +237,20 @@ impl Session {
         }
     }
 
+    pub async fn notify_online(&self) -> Result<(), MqttError> {
+        if let Some(availability_topic) = self.availability_topic.as_deref() {
+            let packet = Packet::Publish(Publish {
+                dup: false,
+                qospid: QosPid::AtMostOnce,
+                retain: false,
+                topic_name: availability_topic,
+                payload: b"online",
+            });
+            self.sender().send(&packet).await?;
+        }
+        Ok(())
+    }
+
     pub async fn send(&mut self, packet: Packet<'_>) -> Result<(), MqttError> {
         let encoded_len = encode_slice(&packet, self.buffer.as_mut())?;
         self.stream.write(&self.buffer[..encoded_len]).await?;
@@ -244,12 +260,22 @@ impl Session {
 
 impl SessionBuilder<'_> {
     pub async fn connect(self) -> Result<Session, MqttError> {
+        let last_will = if let Some(topic) = self.availability_topic.as_deref() {
+            Some(LastWill {
+                topic,
+                message: b"offline",
+                qos: QoS::AtMostOnce,
+                retain: false,
+            })
+        } else {
+            None
+        };
         let mut connect = Connect {
             protocol: Protocol::MQTT311,
             keep_alive: self.keep_alive,
             client_id: CLIENT_ID.into(),
             clean_session: true,
-            last_will: None,
+            last_will,
             username: None,
             password: None,
         };
@@ -281,6 +307,7 @@ impl SessionBuilder<'_> {
                     Ok(Session {
                         stream,
                         buffer,
+                        availability_topic: self.availability_topic,
                         discovery_topic: self.discovery_topic,
                         pid: Pid::new(),
                         subscribers: tokio::sync::broadcast::Sender::new(10),

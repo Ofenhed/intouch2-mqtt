@@ -147,6 +147,10 @@ struct Command {
     #[arg(default_value = "homeassistant")]
     mqtt_discovery_topic: Arc<str>,
 
+    #[arg(long)]
+    #[serde(default)]
+    mqtt_availability_topic: Option<Arc<str>>,
+
     /// Set this to dump memory changes to the specified MQTT topic as
     /// "{memory_changes_mqtt_topic}/{changed_address}".
     #[arg(long)]
@@ -234,6 +238,7 @@ async fn main() -> anyhow::Result<()> {
         };
         let session = MqttSession {
             discovery_topic: args.mqtt_discovery_topic.clone(),
+            availability_topic: args.mqtt_availability_topic.clone(),
             target: mqtt_addr,
             auth,
             keep_alive: 30,
@@ -294,6 +299,9 @@ async fn main() -> anyhow::Result<()> {
     } else {
         None
     };
+    if let Some(mqtt) = &mqtt {
+        mqtt.notify_online().await?;
+    }
     match (mqtt, &spa, &args.memory_changes_mqtt_topic) {
         (Some(mut mqtt), Some(spa), memory_change_topic) => {
             if let Some(memory_change_topic) = memory_change_topic {

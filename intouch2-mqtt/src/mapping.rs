@@ -74,16 +74,9 @@ pub struct Mapping {
 #[derive(serde::Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, untagged)]
 pub enum MappingType {
-    U8 {
-        u8_addr: u16,
-    },
-    U16 {
-        u16_addr: u16,
-    },
-    Array {
-        addr: u16,
-        len: u16,
-    },
+    U8 { u8_addr: u16 },
+    U16 { u16_addr: u16 },
+    Array { addr: u16, len: u16 },
     Static(serde_json::Value),
 }
 
@@ -131,25 +124,33 @@ pub struct GenericMapping {
 mod tests {
     #[test]
     fn barebone_generic() -> anyhow::Result<()> {
-        let mapping: super::GenericMapping = serde_json::from_str(r#"{"type": "light", "name": "Some light", "unique_id": "light0001"}"#)?;
+        let mapping: super::GenericMapping = serde_json::from_str(
+            r#"{"type": "light", "name": "Some light", "unique_id": "light0001"}"#,
+        )?;
         eprintln!("Mapping was {mapping:?}");
         Ok(())
     }
     #[test]
     fn with_custom_values() -> anyhow::Result<()> {
-        let mapping: super::GenericMapping = serde_json::from_str(r#"{"type": "light", "name": "Some light", "unique_id": "light0001", "optimistic": false}"#)?;
+        let mapping: super::GenericMapping = serde_json::from_str(
+            r#"{"type": "light", "name": "Some light", "unique_id": "light0001", "optimistic": false}"#,
+        )?;
         eprintln!("Mapping was {mapping:?}");
         Ok(())
     }
     #[test]
     fn with_custom_values_early() -> anyhow::Result<()> {
-        let mapping: super::GenericMapping = serde_json::from_str(r#"{"type": "light", "optimistic": false, "name": "Some light", "unique_id": "light0001"}"#)?;
+        let mapping: super::GenericMapping = serde_json::from_str(
+            r#"{"type": "light", "optimistic": false, "name": "Some light", "unique_id": "light0001"}"#,
+        )?;
         eprintln!("Mapping was {mapping:?}");
         Ok(())
     }
     #[test]
     fn with_fetcher() -> anyhow::Result<()> {
-        let mapping: super::GenericMapping = serde_json::from_str(r#"{"type": "light", "name": "Some light", "unique_id": "light0001", "state_topic": {"state": {"u8_addr": 100}}}"#)?;
+        let mapping: super::GenericMapping = serde_json::from_str(
+            r#"{"type": "light", "name": "Some light", "unique_id": "light0001", "state_topic": {"state": {"u8_addr": 100}}}"#,
+        )?;
         eprintln!("Mapping was {mapping:?}");
         Ok(())
     }
