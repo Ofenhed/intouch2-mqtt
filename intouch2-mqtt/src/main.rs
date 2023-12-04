@@ -216,6 +216,9 @@ impl Command {
                                 for entity in config.entities.iter_mut() {
                                     if let Err(err) = entity.leaking_parse() {
                                         eprintln!("Could not parse entity json: {err}");
+                                        if let Some(cause) = err.source() {
+                                            eprintln!("{cause}");
+                                        }
                                         std::process::exit(1);
                                     }
                                 }
