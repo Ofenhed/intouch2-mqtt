@@ -336,7 +336,7 @@ impl Mapping<'_> {
         let command_topic = mqtt.topic("select", &unique_id, Topic::Set);
         let config_topic = mqtt.topic("select", &unique_id, Topic::Config);
         let SelectMapping { mapping, name } = mapping;
-        let options: Vec<&str> = mapping.mapping.keys().map(Deref::deref).collect();
+        let options: Vec<&str> = mapping.mapping.values().map(Deref::deref).collect();
         let payload = home_assistant::ConfigureSelect {
             base: home_assistant::ConfigureBase {
                 name,
