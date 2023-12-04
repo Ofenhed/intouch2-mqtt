@@ -14,10 +14,10 @@ COPY intouch2-mqtt/Cargo.toml ./intouch2-mqtt/Cargo.toml
 RUN cargo build
 
 COPY intouch2/ ./intouch2/
-RUN cargo build -p intouch2
+RUN touch ./intouch2/src/* && cargo build -p intouch2
 
 COPY intouch2-mqtt/ ./intouch2-mqtt/
-RUN cargo build --bin intouch2-mqtt
+RUN touch ./intouch2-mqtt/src/* && cargo build --bin intouch2-mqtt
 
 FROM ${BUILD_FROM}
 COPY --from=base /build/target/debug/intouch2-mqtt /bin/intouch2-mqtt
