@@ -170,7 +170,7 @@ pub enum ValueType {
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, untagged)]
 pub enum MappingType {
     U8 {
         u8_addr: u16,
@@ -182,7 +182,6 @@ pub enum MappingType {
         addr: u16,
         len: u16,
     },
-    #[serde(untagged)]
     Static(serde_json::Value),
 }
 
