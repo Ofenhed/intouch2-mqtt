@@ -215,7 +215,7 @@ impl Command {
                                 }
                                 for entity in config.entities.iter_mut() {
                                     if let Err(err) = entity.leaking_parse() {
-                                        eprintln!("Could not parse select json: {err}");
+                                        eprintln!("Could not parse entity json: {err}");
                                         std::process::exit(1);
                                     }
                                 }

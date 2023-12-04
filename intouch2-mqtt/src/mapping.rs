@@ -216,12 +216,41 @@ pub enum MqttType {
 
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct GenericMapping {
+    #[serde(rename = "type")]
     pub mqtt_type: &'static str,
     pub name: &'static str,
     pub unique_id: &'static str,
     // pub topics: HashMap<&'a str, MappingType<'a>>,
     #[serde(flatten)]
     pub mqtt_values: HashMap<&'static str, MqttType>,
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn barebone_generic() -> anyhow::Result<()> {
+        let mapping: super::GenericMapping = serde_json::from_str(r#"{"type": "light", "name": "Some light", "unique_id": "light0001"}"#)?;
+        eprintln!("Mapping was {mapping:?}");
+        Ok(())
+    }
+    #[test]
+    fn with_custom_values() -> anyhow::Result<()> {
+        let mapping: super::GenericMapping = serde_json::from_str(r#"{"type": "light", "name": "Some light", "unique_id": "light0001", "optimistic": false}"#)?;
+        eprintln!("Mapping was {mapping:?}");
+        Ok(())
+    }
+    #[test]
+    fn with_custom_values_early() -> anyhow::Result<()> {
+        let mapping: super::GenericMapping = serde_json::from_str(r#"{"type": "light", "optimistic": false, "name": "Some light", "unique_id": "light0001"}"#)?;
+        eprintln!("Mapping was {mapping:?}");
+        Ok(())
+    }
+    #[test]
+    fn with_fetcher() -> anyhow::Result<()> {
+        let mapping: super::GenericMapping = serde_json::from_str(r#"{"type": "light", "name": "Some light", "unique_id": "light0001", "state_topic": {"state": {"u8_addr": 100}}}"#)?;
+        eprintln!("Mapping was {mapping:?}");
+        Ok(())
+    }
 }
 
 impl GenericMapping {
@@ -249,7 +278,7 @@ impl Mapping {
         } = mapping;
         let mut next_state_topic = || {
             counter += 1;
-            topics.topic(&mqtt_type, &format!("{mqtt_name}/{counter}"), Topic::State)
+            topics.topic(&mqtt_type, &format!("{unique_id}/{counter}"), Topic::State)
         };
 
         let device = self.device.clone();
