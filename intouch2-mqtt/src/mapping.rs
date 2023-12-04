@@ -282,6 +282,7 @@ impl Mapping {
         };
 
         let device = self.device.clone();
+        let mut new_jobs = vec![];
         let json_config = {
             let mut config = home_assistant::ConfigureGeneric {
                 base: home_assistant::ConfigureBase {
@@ -304,7 +305,7 @@ impl Mapping {
                             } else {
                                 None
                             };
-                            self.jobs.spawn(async move {
+                            new_jobs.push(async move {
                                 loop {
                                     let reported_value = match (
                                         &state,
@@ -369,6 +370,9 @@ impl Mapping {
             payload: &json_config,
         });
         mqtt.send(config_packet).await?;
+        for job in new_jobs {
+            self.jobs.spawn(job);
+        }
         Ok(())
     }
     pub async fn add_light(
