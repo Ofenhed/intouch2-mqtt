@@ -152,26 +152,6 @@ struct Command {
     #[arg(long)]
     memory_changes_mqtt_topic: Option<Arc<str>>,
 
-    /// A mapping of all lights which should be mapped from the Spa to MQTT.
-    #[arg(skip)]
-    #[serde(rename = "lights_json", default)]
-    lights: Vec<JsonValue<mapping::LightMapping<'static>>>,
-
-    /// A mapping of all pumps which should be mapped from the Spa to MQTT.
-    #[arg(skip)]
-    #[serde(rename = "pumps_json", default)]
-    pumps: Vec<JsonValue<mapping::FanMapping<'static>>>,
-
-    /// A mapping of the temperature of the Spa to MQTT.
-    #[arg(skip)]
-    #[serde(rename = "temperatures_json", default)]
-    temperatures: Vec<JsonValue<mapping::ClimateMapping<'static>>>,
-
-    /// A mapping of custom select lists from the Spa to MQTT.
-    #[arg(skip)]
-    #[serde(rename = "selects_json", default)]
-    selects: Vec<JsonValue<mapping::SelectMapping<'static>>>,
-
     #[arg(skip)]
     #[serde(rename = "entities_json", default)]
     entities: Vec<JsonValue<mapping::GenericMapping>>,
@@ -189,30 +169,6 @@ impl Command {
                     match serde_json::from_slice::<Command>(json) {
                         Ok(mut config) => {
                             return {
-                                for light in config.lights.iter_mut() {
-                                    if let Err(err) = light.leaking_parse() {
-                                        eprintln!("Could not parse light json: {err}");
-                                        std::process::exit(1);
-                                    }
-                                }
-                                for pump in config.pumps.iter_mut() {
-                                    if let Err(err) = pump.leaking_parse() {
-                                        eprintln!("Could not parse pump json: {err}");
-                                        std::process::exit(1);
-                                    }
-                                }
-                                for temperature in config.temperatures.iter_mut() {
-                                    if let Err(err) = temperature.leaking_parse() {
-                                        eprintln!("Could not parse temperature json: {err}");
-                                        std::process::exit(1);
-                                    }
-                                }
-                                for select in config.selects.iter_mut() {
-                                    if let Err(err) = select.leaking_parse() {
-                                        eprintln!("Could not parse select json: {err}");
-                                        std::process::exit(1);
-                                    }
-                                }
                                 for entity in config.entities.iter_mut() {
                                     if let Err(err) = entity.leaking_parse() {
                                         eprintln!("Could not parse entity json: {err}");
@@ -390,54 +346,6 @@ async fn main() -> anyhow::Result<()> {
                 identifiers: Box::from([args.spa_id.clone()]),
                 name: spa_name.into(),
             })?;
-            let mut counter = 0;
-            for light in &args.lights {
-                counter += 1;
-                mapping
-                    .add_light(
-                        &format!("light{counter}"),
-                        light.unwrap().clone(),
-                        &spa,
-                        &mut mqtt,
-                    )
-                    .await?;
-            }
-            counter = 0;
-            for pump in &args.pumps {
-                counter += 1;
-                mapping
-                    .add_pump(
-                        &format!("pump{counter}"),
-                        pump.unwrap().clone(),
-                        &spa,
-                        &mut mqtt,
-                    )
-                    .await?;
-            }
-            counter = 0;
-            for temp in &args.temperatures {
-                counter += 1;
-                mapping
-                    .add_climate(
-                        &format!("climate{counter}"),
-                        temp.unwrap().clone(),
-                        &spa,
-                        &mut mqtt,
-                    )
-                    .await?;
-            }
-            counter = 0;
-            for select in &args.selects {
-                counter += 1;
-                mapping
-                    .add_select(
-                        &format!("select{counter}"),
-                        select.unwrap().clone(),
-                        &spa,
-                        &mut mqtt,
-                    )
-                    .await?;
-            }
             for entity in &args.entities {
                 mapping
                     .add_generic(entity.unwrap().clone(), &spa, &mut mqtt)
@@ -448,13 +356,6 @@ async fn main() -> anyhow::Result<()> {
                     mapping.tick().await?;
                 }
             });
-            // let mut mqtt_spy = mqtt.subscribe();
-            // join_set.spawn(async move {
-            //    loop {
-            //        let response = mqtt_spy.recv().await?;
-            //        eprintln!("Got data: {:?}", response.packet);
-            //    }
-            //});
             join_set.spawn(async move {
                 loop {
                     mqtt.tick().await?;
