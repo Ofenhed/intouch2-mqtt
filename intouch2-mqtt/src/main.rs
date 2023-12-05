@@ -151,6 +151,10 @@ struct Command {
     #[serde(default)]
     mqtt_availability_topic: Option<Arc<str>>,
 
+    /// Set this to dump memory changes to the specified MQTT topic.
+    #[arg(long)]
+    key_press_mqtt_topic: Option<Arc<str>>,
+
     /// Set this to dump memory changes to the specified MQTT topic as
     /// "{memory_changes_mqtt_topic}/{changed_address}".
     #[arg(long)]
@@ -220,7 +224,7 @@ pub enum Error {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Command::get();
-    let mqtt = if let Some(target) = &args.mqtt_target {
+    let mut mqtt = if let Some(target) = &args.mqtt_target {
         let mut mqtt_addrs = net::lookup_host(target.as_ref()).await?;
         let mqtt_addr = if let Some(addr) = mqtt_addrs.next() {
             Ok(addr)
@@ -302,6 +306,31 @@ async fn main() -> anyhow::Result<()> {
     if let Some(mqtt) = &mqtt {
         mqtt.notify_online().await?;
     }
+    match (&mut mqtt, &spa, &args.key_press_mqtt_topic) {
+        (Some(mqtt), Some(spa), Some(memory_change_topic)) => {
+            let mut mqtt_sender = mqtt.sender();
+            let mut key_presses = spa.subscribe_keypress();
+            join_set.spawn(async move {
+                loop {
+                    let key = format!("{}", key_presses.recv().await?);
+                    let package = mqttrs::Packet::Publish(mqttrs::Publish {
+                        dup: false,
+                        qospid: mqttrs::QosPid::AtMostOnce,
+                        retain: false,
+                        topic_name: memory_change_topic,
+                        payload: key.as_bytes(),
+                    });
+                    mqtt_sender.send(&package).await?;
+                }
+            });
+        }
+        (None, _, Some(_)) | (_, None, Some(_)) => {
+            return Err(Error::InvalidArguments(
+                "key_press_mqtt_topic requires both mqtt and spa_memory_size to be set",
+            ))?
+        }
+        (_, _, None) => (),
+    }
     match (mqtt, &spa, &args.memory_changes_mqtt_topic) {
         (Some(mut mqtt), Some(spa), memory_change_topic) => {
             if let Some(memory_change_topic) = memory_change_topic {
@@ -370,22 +399,12 @@ async fn main() -> anyhow::Result<()> {
                 }
             });
         }
-        (None, Some(_), Some(_)) => {
+        (None, _, Some(_)) | (_, None, Some(_)) => {
             return Err(Error::InvalidArguments(
-                "mqtt_memory_changes_topic requres mqtt to be set",
+                "mqtt_memory_changes_topic requires both mqtt and spa_memory_size to be set",
             ))?
         }
-        (Some(_), None, _) => {
-            return Err(Error::InvalidArguments(
-                "mqtt requres a known spa_memory_size",
-            ))?
-        }
-        (_, None, Some(_)) => {
-            return Err(Error::InvalidArguments(
-                "mqtt_memory_changes_topic requres a known spa_memory_size",
-            ))?
-        }
-        (None, _, None) => (),
+        (_, _, None) => (),
     }
     if let Some(spa) = spa {
         // let spa_worker = spa.clone();

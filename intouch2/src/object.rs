@@ -91,6 +91,7 @@ disjoint_impls! {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct StatusChange<'a> {
     pub change: u16,
     pub data: Cow<'a, [u8; 2]>,
@@ -149,14 +150,10 @@ macro_rules! gen_packages {
   };
   (FIND_STRUCT_LIFETIMES $field:literal : &$type:ty $(,$($rest:tt)*)?) => {
     'a
-    //$crate::gen_packages!{ FIND_STRUCT_LIFETIMES $($($rest)*)? }
   };
   (FIND_STRUCT_LIFETIMES $field:literal : $type:ty $(,$($rest:tt)*)?) => {
     $crate::gen_packages!{ FIND_STRUCT_LIFETIMES $($($rest)*)? }
   };
-  //(FIND_STRUCT_LIFETIMES $field:literal : [$field:ty $(; $count:expr)?] $(,$($rest:tt)*)?) => {
-  //  $crate::gen_packages!{ FIND_STRUCT_LIFETIMES $($($rest)*)? }
-  //};
   (FIND_STRUCT_LIFETIMES ) => {};
   (FIND_STRUCT_ENUM_LIFETIME $($rest:tt)+) => {
     $crate::gen_packages!{ FIND_STRUCT_ENUM_LIFETIME => $crate::gen_packages!{ FIND_STRUCT_LIFETIMES $rest }}
@@ -176,32 +173,15 @@ macro_rules! gen_packages {
   (BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : $field_type:ty $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $($struct_lifetime)? $(#[$meta:meta])* $struct { $($current)* pub $field: <$field_type as $crate::object::ActualType>::Type, } => $($($rest)*)? }
   };
-  //(BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : &[$field_type:ty $(; $len:expr)?] $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum 'a $(#[$meta:meta])* $struct { $($current)* $field: <&'a [$field_type $(; $len)?] as $crate::object::ActualType>::Type, } => $($($rest)*)? }
-  //};
-  //(BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : [$field_type:ty $(; $len:expr)?] $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $($struct_lifetime)? $(#[$meta:meta])* $struct { $($current)* $field: <[$field_type $(; $len)?] as $crate::object::ActualType>::Type, } => $($($rest)*)? }
-  //};
-  //(BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : [$field_type:ty $(; $len:expr)?] $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $($struct_lifetime)? $(#[$meta:meta])* $struct { $($current)* $field: std::borrow::Cow<'static, [$field_type]>, } => $($($rest)*)? }
-  //};
-  //(BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : &[$field_type:ty $(; $len:expr)?] $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum 'a $(#[$meta:meta])* $struct { $($current)* $field: std::borrow::Cow<'a, [$field_type]>, } => $($($rest)*)? }
-  //};
   (BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : [$arr_type:ty $(; $len:expr)?] $(,$($rest:tt)*)?) => {
-      //$crate::gen_packages!{ BUILD_STRUCT_ARGS $enum 'a $struct { $($current)* $field: std::borrow::Cow<'a, [u8]>, } => $($($rest)*)? }
       compile_error!{"Type {} is not supported", $arr_type}
   };
-  //(BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : $field_type:ty $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $($struct_lifetime)? $struct { $($current)* $field: $field_type, } => $($($rest)*)? }
-  //};
   (DERIVE_CLONE_FOR_STATIC $struct_lifetime:lifetime) => {
     $enum_name <$struct_lifetime>
   };
   (DERIVE_CLONE_FOR_STATIC) => {
     #[derive(Clone)]
   };
-  // TODO: Remove FINISH_BUILD_STRUCT_ARGS specialization
   (BUILD_STRUCT_ARGS $enum:ident $struct_lifetime:lifetime $(#[$meta:meta])* $struct:ident { $($current:tt)* } => ) => {
       $crate::gen_packages!{ FINISH_BUILD_STRUCT_ARGS $enum $struct_lifetime $(#[$meta])* $struct { $($current)* } }
   };
@@ -211,6 +191,7 @@ macro_rules! gen_packages {
   (FINISH_BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* }) => {
       #[derive(Debug, PartialEq, Eq, Clone)]
       $(#[$meta])*
+      #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
       pub struct $struct $(<$struct_lifetime>)? {
           $($current)*
       }
@@ -226,43 +207,11 @@ macro_rules! gen_packages {
           => $($($rest)*)?
       }
   };
-  //(BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : u16 $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_IMPLS
-  //        $($li)? $struct $tag
-  //        [ $($member)* $field ]
-  //        [ $($parser)* ($field, nom::number::complete::be_u16) ]
-  //        [ $($composer)* (.$field.to_be_bytes()) ]
-  //        { $($saved)* }
-  //        => $($($rest)*)?
-  //    }
-  //};
-  //(BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : & $($rest:tt)+) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_IMPLS
-  //        'a $struct $tag
-  //        [ $($member)* ]
-  //        [ $($parser)* ]
-  //        [ $($composer)* ]
-  //        { $($saved)* }
-  //        => $field : $($rest)+
-  //    }
-  //};
-  //(BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : [u8 $(; $len:expr)?] $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_IMPLS
-  //        $($li) $struct $tag
-  //        [ $($member)* $field ]
-  //        [ $($parser)* ($field, $crate::parser::Take::<[u8]> { $(len: Some($len), )? ..Default::default() }.parse_multiple) ]
-  //        [ $($composer)* (.$field) ]
-  //        { $($saved)* }
-  //        => $($($rest)*)?
-  //    }
-  //};
   (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : & $field_type:ty $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_IMPLS
           'a $struct $tag
           [ $($member)* $field ]
-          //[ $($parser)* ($field, $crate::parser::Take::<[u8]> { $(len: Some($len), )? ..Default::default() }.parse_multiple) ]
-          [ $($parser)* ($field: &'a $field_type) ] //$crate::parser::Take::<[u8]> { $(len: Some($len), )? ..Default::default() }.parse_multiple) ]
-          //[ $($parser)* ($field, <$field_type as DatasContent>::parse) ]
+          [ $($parser)* ($field: &'a $field_type) ]
           [ $($composer)* (.$field.compose()) ]
           { $($saved)* }
           => $($($rest)*)?
@@ -272,79 +221,12 @@ macro_rules! gen_packages {
       $crate::gen_packages!{ BUILD_STRUCT_IMPLS
           $($li)? $struct $tag
           [ $($member)* $field ]
-          //[ $($parser)* ($field, $crate::parser::Take::<[u8]> { $(len: Some($len), )? ..Default::default() }.parse_multiple) ]
-          [ $($parser)* ($field: $field_type) ] //$crate::parser::Take::<[u8]> { $(len: Some($len), )? ..Default::default() }.parse_multiple) ]
-          //[ $($parser)* ($field, <$field_type as DatasContent>::parse) ]
+          [ $($parser)* ($field: $field_type) ]
           [ $($composer)* (.$field.compose()) ]
           { $($saved)* }
           => $($($rest)*)?
       }
   };
-  //(BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : &[u8 $(; $len:expr)?] $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_IMPLS
-  //        'a $struct $tag
-  //        [ $($member)* $field ]
-  //        //[ $($parser)* ($field, $crate::parser::Take::<[u8]> { $(len: Some($len), )? ..Default::default() }.parse_multiple) ]
-  //        [ $($parser)* ($field, <<&'a [u8 $(; $len)?] as ActualType>::Type as DatasContent>::parse) ] //$crate::parser::Take::<[u8]> { $(len: Some($len), )? ..Default::default() }.parse_multiple) ]
-  //        //[ $($parser)* ($field, <$field_type as DatasContent>::parse) ]
-  //        [ $($composer)* (.$field) ]
-  //        { $($saved)* }
-  //        => $($($rest)*)?
-  //    }
-  //};
-  //(BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : &[$field_type:ty $(; $len:expr)?] $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_IMPLS
-  //        'a $struct $tag
-  //        [ $($member)* $field ]
-  //        //[ $($parser)* ($field, <<&'a [$field_type $(; $len)?] as ActualType>::Type as DatasContent>::parse) ]
-  //        [ $($parser)* ($field: &'a [$field_type $(; $len)?] ) ]
-  //        //[ $($parser)* ($field, <$field_type as DatasContent>::parse) ]
-  //        [ $($composer)* (.$field.compose()) ]
-  //        { $($saved)* }
-  //        => $($($rest)*)?
-  //    }
-  //};
-  //(BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : [$field_type:ty $(; $len:expr)?] $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_IMPLS
-  //        $($li)? $struct $tag
-  //        [ $($member)* $field ]
-  //        [ $($parser)* ($field, <<[$field_type $(; $len)?] as ActualType>::Type as DatasContent>::parse) ]
-  //        //[ $($parser)* ($field, <$field_type as DatasContent>::parse) ]
-  //        [ $($composer)* (.$field.compose()) ]
-  //        { $($saved)* }
-  //        => $($($rest)*)?
-  //    }
-  //};
-  //(BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : &$field_type:ty $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_IMPLS
-  //        'a $struct $tag
-  //        [ $($member)* $field ]
-  //        [ $($parser)* ($field, <$field_type as DatasContent>::parse) ]
-  //        [ $($composer)* (.$field.compose()) ]
-  //        { $($saved)* }
-  //        => $($($rest)*)?
-  //    }
-  //};
-  //(BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : $field_type:ty $(,$($rest:tt)*)?) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_IMPLS
-  //        $($li)? $struct $tag
-  //        [ $($member)* $field ]
-  //        [ $($parser)* ($field, <$field_type as DatasContent>::parse) ]
-  //        [ $($composer)* (.$field.compose()) ]
-  //        { $($saved)* }
-  //        => $($($rest)*)?
-  //    }
-  //};
-  //(BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : [u8], $(,)*) => {
-  //    $crate::gen_packages!{ BUILD_STRUCT_IMPLS
-  //        'a $struct $tag
-  //        [ $($member)* $field ]
-  //        [ $( $parser)* ($field, nom::bytes::complete::take_till(|_| false)) ]
-  //        [ $($composer)* (.$field) ]
-  //        { $($saved)* }
-  //        => // No tail after arbitraty length array
-  //    }
-  //};
   (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : [u8], $($rest:tt)+) => {
     compile_error!{ "If you want arbitraty length elements that's not last, take that up with nom, or build it yourself!" }
   };
@@ -354,7 +236,6 @@ macro_rules! gen_packages {
   (DATAS_CONTENT_LIFETIME $li:lifetime) => {
     $crate :: object :: DatasContent<$li>
   };
-  //(BUILD_STRUCT_IMPLS $struct_life:lifetime $struct:ident $tag:literal [$($field:ident)*] [ $( ( $var:ident, $($parser:tt)* ) )* ] [ $( ( $($static:literal)? $(.$member:ident $( -> |$closure_input:ident| $closure:expr )? )? ) )* ] { $($saved:tt)* } => ) => {
   (BUILD_STRUCT_IMPLS $struct_life:lifetime $struct:ident $tag:literal [$($field:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => ) => {
     $crate::gen_packages!{ GENERATE_STRUCT_IMPLS { SAME $struct_life } $struct $tag [$($field)*] [ $($parser)* ] [$($composer)*] { $($saved)* } }
   };
@@ -372,11 +253,6 @@ macro_rules! gen_packages {
               })?
           }
       }
-      //impl<$struct_life> From<&$struct<$struct_life>> for $struct<'static> {
-      //    fn from(_other: &$struct<$struct_life>) -> $struct<'static> {
-      //        todo!()
-      //    }
-      //}
       impl<$struct_life> From<$struct<$struct_life>> for $enum<$struct_life> {
           fn from(other: $struct<$struct_life>) -> $enum<$struct_life> {
               $enum::$struct(other)
@@ -459,12 +335,12 @@ macro_rules! gen_packages {
   (WITH_TYPES_LIST $($struct_lifetime:lifetime)? $enum:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(#[$meta:meta])* $struct:ident { $tag:literal : Tag, $($args:tt)* } $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $struct {} => $($args)* }
       $crate::gen_packages!{ BUILD_STRUCT_IMPLS $struct $tag [] [] [] { $enum [$($const)*] [$($($life)? $arg)*] $($($rest)*)? } => $tag: Tag, $($args)* }
-      //$crate::gen_packages!{ WITH_TYPES_LIST $enum [$($const)*] [$($($life)? $arg)* $($struct)?] => $($($rest)*)? }
   };
 
   (WITH_TYPES_LIST $enum:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(#[$meta:meta])* $tailing:ident ( $verb:literal : Tailing ) $(,$($rest:tt)*)?) => {
     #[derive(Debug, PartialEq, Eq, Clone)]
     $(#[$meta])*
+    #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
     pub struct $tailing<'a>(pub std::borrow::Cow<'a, [u8]>);
     impl $crate :: object :: dispatch :: DatasType for $tailing<'_> {
       type Group = $crate :: object :: dispatch :: Tailing;
@@ -510,6 +386,7 @@ macro_rules! gen_packages {
     #[derive(Default)]
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     $(#[$meta])*
+    #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
     pub struct $simple;
     impl $crate::ToStatic for $simple {
         type Static = $simple;
@@ -533,6 +410,7 @@ macro_rules! gen_packages {
   };
   (WITH_TYPES_LIST $enum_name:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(,)?) => {
     #[derive(Debug, PartialEq, Eq, Clone)]
+    #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
     pub enum $enum_name<'a> {
       $($const,)*
       $($arg($arg$(<$life>)?),)*
@@ -543,7 +421,6 @@ macro_rules! gen_packages {
         Ok((input, parsed.into()))
       }
       pub fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        //$crate::gen_packages!{ PARSER_CONTENT input $($const)* $($($life)? $arg)* }
         $crate::gen_packages!{ PARSER_CONTENT input $($const)* $($arg)* }
       }
       pub fn compose(&self) -> std::borrow::Cow<[u8]> {
@@ -573,6 +450,7 @@ macro_rules! gen_packages {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum PackAction<'a> {
     Set {
         config_version: u8,
@@ -630,9 +508,19 @@ pub mod package_data {
         SetStatus {
             b"SPACK": Tag,
             seq: u8,
-            pack_type: u8,
+            b"\x46": Tag,
             len: u8,
-            action: &PackActionPlaceholder,
+            config_version: u8,
+            log_version: u8,
+            pos: u16,
+            data: &[u8],
+        },
+        KeyPress {
+            b"SPACK": Tag,
+            seq: u8,
+            b"\x39": Tag,
+            len: u8,
+            key: u8,
         },
         PushStatusAck {
             b"STATQ": Tag,

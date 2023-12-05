@@ -12,7 +12,10 @@ use std::{
 use intouch2::{
     datas::GeckoDatas,
     generate_uuid,
-    object::{package_data, NetworkPackage, NetworkPackageData, PackAction, StatusChange},
+    object::{
+        package_data::{self, KeyPress},
+        NetworkPackage, NetworkPackageData, PackAction, StatusChange,
+    },
     parser::ParseError,
 };
 use tokio::{
@@ -33,6 +36,7 @@ pub struct SpaConnection {
     full_state_download_interval: Arc<Mutex<time::Interval>>,
     state: Arc<sync::Mutex<GeckoDatas>>,
     state_subscribers: Arc<sync::Mutex<HashMap<Range<usize>, sync::watch::Sender<Box<[u8]>>>>>,
+    keypress_subscribers: Arc<sync::broadcast::Sender<u8>>,
     seq: Arc<AtomicU8>,
 }
 
@@ -50,6 +54,8 @@ pub enum SpaError {
     PipeSendFailed(#[from] tokio::sync::mpsc::error::SendError<NetworkPackage<'static>>),
     #[error("Spa pipe error: {0}")]
     PipeReceiveFailed(#[from] tokio::sync::broadcast::error::RecvError),
+    #[error("Spa keypress pipe error: {0}")]
+    KeypressSendFailed(#[from] tokio::sync::broadcast::error::SendError<u8>),
     #[error("Runtime error: {0}")]
     JoinError(#[from] tokio::task::JoinError),
     #[error("Invalid data received: {0}")]
@@ -80,6 +86,10 @@ impl SpaConnection {
                     .subscribe()
             }
         }
+    }
+
+    pub fn subscribe_keypress(&self) -> sync::broadcast::Receiver<u8> {
+        self.keypress_subscribers.subscribe()
     }
 
     pub async fn len(&self) -> usize {
@@ -152,6 +162,7 @@ impl SpaConnection {
                             .into(),
                         state: Arc::new(state.into()),
                         state_subscribers: Default::default(),
+                        keypress_subscribers: sync::broadcast::Sender::new(5).into(),
                     });
                 }
                 NetworkPackage::Hello(_) => continue,
@@ -234,6 +245,7 @@ impl SpaConnection {
             let interval = self.full_state_download_interval.clone();
             let tx = self.pipe.tx.clone();
             let pipe = self.pipe.clone();
+            let keypress_sender = self.keypress_subscribers.clone();
             let src = self.src.clone();
             let dst = self.dst.clone();
             let seq = self.seq.clone();
@@ -287,6 +299,12 @@ impl SpaConnection {
                                         data_read = end;
                                         expected = next;
                                     }
+                                    NetworkPackage::Addressed {
+                                        data: NetworkPackageData::KeyPress(KeyPress { key, .. }),
+                                        ..
+                                    } => {
+                                        keypress_sender.send(key)?;
+                                    }
                                     _ => continue,
                                 },
                                 Err(_timeout) => continue 'retry,
@@ -313,12 +331,8 @@ impl SpaConnection {
                         NetworkPackage::Addressed {
                             data:
                                 NetworkPackageData::SetStatus(package_data::SetStatus {
-                                    action:
-                                        PackAction::Set {
-                                            pos,
-                                            data: new_data,
-                                            ..
-                                        },
+                                    pos,
+                                    data: new_data,
                                     ..
                                 }),
                             dst,

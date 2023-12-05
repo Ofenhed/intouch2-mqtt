@@ -253,7 +253,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "rand",
- "serde_json",
+ "serde",
  "strum",
  "thiserror",
 ]

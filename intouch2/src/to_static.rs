@@ -9,8 +9,6 @@ pub trait ToStatic {
 impl<O, S, T> ToStatic for Cow<'_, [T]>
 where
     S: Clone + 'static,
-    // for<'a> Cow<'a, S>: Sized,
-    // R: Into<S>,
     O: ToStatic<Static = S>,
     [T]: ToOwned<Owned = Vec<O>>,
 {
@@ -40,9 +38,6 @@ where
             unreachable!("The size is compile time checked as well")
         };
         Cow::Owned(*b)
-        // let new_list: Box<[S]> = self.iter().map(ToStatic::to_static).collect();
-        // let Ok(sized_list): Result<Box<[S; N]>, _> = new_list.try_into() else { unreachable!("The
-        // size is compile time checked as well") }; Cow::Owned(*sized_list)
     }
 }
 
