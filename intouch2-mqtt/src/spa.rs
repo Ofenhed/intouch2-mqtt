@@ -14,7 +14,7 @@ use intouch2::{
     generate_uuid,
     object::{
         package_data::{self, KeyPress},
-        NetworkPackage, NetworkPackageData, PackAction, StatusChange,
+        NetworkPackage, NetworkPackageData, StatusChange,
     },
     parser::ParseError,
 };

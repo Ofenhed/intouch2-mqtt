@@ -166,20 +166,6 @@ impl<'a> TakeMultiple<'a> for Take<[u8]> {
     }
 }
 
-// impl<T: DatasContent<'static> + 'static> TakeMultiple<'static> for [T] where [T]: ToOwned {
-//    type Type = Cow<'static, [T]>;
-//
-//    fn take(self, input: &'a [u8]) -> nom::IResult<&'a [u8], Self::Type> {
-//        if let Some(len) = self.len {
-//            //let collection =
-//            let (input, result) = nom::bytes::complete::take::<usize, _, InnerNomError<'a>>(len as
-// usize)(input)?;            Ok((input, Cow::Borrowed(result)))
-//        } else {
-//            Ok((&[], Cow::Borrowed(input)))
-//        }
-//    }
-//}
-
 impl<'a> DatasContent<'a> for StatusChange<'a> {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         let (input, (change, data)) = DatasContent::parse(input)?;
@@ -192,53 +178,6 @@ impl<'a> DatasContent<'a> for StatusChange<'a> {
                 .concat()
                 .into(),
         )
-    }
-}
-
-impl<'a> DatasContent<'a> for PackAction<'a> {
-    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        match u8::parse.and(u8::parse).parse(input)? {
-            (input, (57, key)) => Ok((input, PackAction::KeyPress { key })),
-            (input, (70, config_version)) => {
-                let (input, ((log_version, pos), data)) = DatasContent::parse
-                    .and(DatasContent::parse)
-                    .and(DatasContent::parse)
-                    .parse(input)?;
-                Ok((
-                    input,
-                    PackAction::Set {
-                        config_version,
-                        log_version,
-                        pos,
-                        data,
-                    },
-                ))
-            }
-            _ => Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Tag,
-            ))),
-        }
-    }
-
-    fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Owned(match self {
-            PackAction::KeyPress { key } => [57u8, *key].into(),
-            PackAction::Set {
-                config_version,
-                log_version,
-                pos,
-                data,
-            } => {
-                let mut result = Vec::with_capacity(5 + data.len());
-                result.push(70u8);
-                result.extend_from_slice(&config_version.to_be_bytes());
-                result.extend_from_slice(&log_version.to_be_bytes());
-                result.extend_from_slice(&pos.to_be_bytes());
-                result.extend_from_slice(data);
-                result
-            }
-        })
     }
 }
 
@@ -266,98 +205,6 @@ where
         Cow::Owned(result.concat())
     }
 }
-
-// fn calculate_rgba_from_rgb(r: u8, g: u8, b: u8) -> (u8, u8, u8, u8) {
-//  let intencity = r + g + b;
-//  let max = ::std::cmp::max(r, ::std::cmp::max(g, b));
-//
-//  let mul = intencity as f32 / max as f32;
-//  fn conv(x: f32) -> u8 {
-//    let y = x as u8;
-//    y
-//  }
-//  (
-//    conv(r as f32 * mul),
-//    conv(g as f32 * mul),
-//    conv(b as f32 * mul),
-//    intencity,
-//  )
-//}
-// pub fn get_status_rgba(
-//  data: &PushStatusList,
-//) -> (Option<(u8, u8, u8, u8)>, Option<(u8, u8, u8, u8)>) {
-//  use PushStatusIndex::{Blue, Green, Red, SecondaryBlue, SecondaryGreen, SecondaryRed};
-//
-//  let get = |x: &PushStatusIndex| data.get(&PushStatusKey::Keyed(*x));
-//  let fst = |&(x, _)| x;
-//
-//  let (pr, pg, pb, got_primary) = match (get(&Red), get(&Green), get(&Blue)) {
-//    (None, None, None) => (0, 0, 0, false),
-//    (r, g, b) => (
-//      fst(r.unwrap_or(&(0, 0))),
-//      fst(g.unwrap_or(&(0, 0))),
-//      fst(b.unwrap_or(&(0, 0))),
-//      true,
-//    ),
-//  };
-//
-//  let (sr, sg, sb, got_secondary) = match (
-//    get(&SecondaryRed),
-//    get(&SecondaryGreen),
-//    get(&SecondaryBlue),
-//  ) {
-//    (None, None, None) => (0, 0, 0, false),
-//    (r, g, b) => (
-//      fst(r.unwrap_or(&(0, 0))),
-//      fst(g.unwrap_or(&(0, 0))),
-//      fst(b.unwrap_or(&(0, 0))),
-//      true,
-//    ),
-//  };
-//
-//  let left = if got_primary {
-//    Some(calculate_rgba_from_rgb(pr, pg, pb))
-//  } else {
-//    None
-//  };
-//  let right = if got_secondary {
-//    Some(calculate_rgba_from_rgb(sr, sg, sb))
-//  } else {
-//    None
-//  };
-//
-//  (left, right)
-//}
-// pub fn get_temperature(
-//  data: &'_ PushStatusList,
-//  previous_temperature: Option<u8>,
-//) -> Option<Temperature> {
-//  let mut best_result = None;
-//  for (index, (msb, lsb)) in data.iter() {
-//    if let PushStatusKey::Keyed(key) = index {
-//      let result = match key {
-//        PushStatusIndex::TargetTemperatureLsb | PushStatusIndex::TargetTemperatureLsbAgain => {
-//          Some(Temperature::uncertain(*msb, previous_temperature))
-//        }
-//        PushStatusIndex::TargetTemperatureMsb | PushStatusIndex::TargetTemperatureMsbAgain => {
-//          Some(Temperature::certain(*msb, *lsb))
-//        }
-//        _ => None,
-//      };
-//      match (&best_result, &result) {
-//        (_, Some(Temperature::Celcius(_))) => {
-//          best_result = result;
-//          break;
-//        }
-//        (None, _) => {
-//          best_result = result;
-//        }
-//        _ => (),
-//      }
-//    }
-//  }
-//  best_result
-//}
 
 pub fn parse_network_data<'a>(input: &'a [u8]) -> Result<NetworkPackage<'a>, ParseError> {
     match parse_hello_package

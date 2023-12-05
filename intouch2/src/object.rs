@@ -449,46 +449,6 @@ macro_rules! gen_packages {
   };
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-pub enum PackAction<'a> {
-    Set {
-        config_version: u8,
-        log_version: u8,
-        pos: u16,
-        data: Cow<'a, [u8]>,
-    },
-    KeyPress {
-        key: u8,
-    },
-}
-
-impl ToStatic for PackAction<'_> {
-    type Static = PackAction<'static>;
-
-    fn to_static(&self) -> Self::Static {
-        match self.to_owned() {
-            PackAction::Set {
-                config_version,
-                log_version,
-                pos,
-                data,
-            } => PackAction::Set {
-                config_version,
-                log_version,
-                pos,
-                data: data.to_static(),
-            },
-            PackAction::KeyPress { key } => PackAction::KeyPress { key },
-        }
-    }
-}
-
-pub struct PackActionPlaceholder;
-impl<'a> ActualType for &'a PackActionPlaceholder {
-    type Type = PackAction<'a>;
-}
-
 pub mod package_data {
     use super::*;
     gen_packages! {
