@@ -340,7 +340,12 @@ impl PortForward {
                             data: ref package,
                             ..
                         } => {
-                            if self.dump_traffic {
+                            if self.dump_traffic
+                                && !matches!(
+                                    package,
+                                    NetworkPackageData::Ping | NetworkPackageData::Pong
+                                )
+                            {
                                 eprintln!("Self -> {}", package.display());
                             }
                             let send_spa = send_spa.clone();
@@ -376,7 +381,12 @@ impl PortForward {
                                     ..
                                 },
                             ) if dst[..] == spa_hello.id[..] => {
-                                if self.dump_traffic {
+                                if self.dump_traffic
+                                    && !matches!(
+                                        content,
+                                        NetworkPackageData::Ping | NetworkPackageData::Pong
+                                    )
+                                {
                                     eprintln!("{source_addr} -> {}", content.display());
                                 }
                                 let count_before = forwards.len();
@@ -467,7 +477,12 @@ impl PortForward {
                                             unreachable!()
                                         };
                                         let sender = pipe.clone();
-                                        if self.dump_traffic {
+                                        if self.dump_traffic
+                                            && !matches!(
+                                                content,
+                                                NetworkPackageData::Ping | NetworkPackageData::Pong
+                                            )
+                                        {
                                             eprintln!("Self <- {}", content.display());
                                         }
                                         let package = package.to_static();
@@ -480,7 +495,12 @@ impl PortForward {
                                         let Some(send_clients) = &send_clients else {
                                             unreachable!("How can you send to clients if there are no clients?")
                                         };
-                                        if self.dump_traffic {
+                                        if self.dump_traffic
+                                            && !matches!(
+                                                content,
+                                                NetworkPackageData::Ping | NetworkPackageData::Pong
+                                            )
+                                        {
                                             eprintln!("{addr} <- {}", content.display());
                                         }
                                         let send_clients = send_clients.clone();
