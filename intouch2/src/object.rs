@@ -481,7 +481,6 @@ pub mod package_data {
             seq: u8,
             pack_type: u8,
             b"\x02\x39": Tag,
-            len: u8,
             key: u8,
         },
         PushStatusAck {
