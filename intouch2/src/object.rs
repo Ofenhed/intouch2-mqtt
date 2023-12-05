@@ -468,8 +468,9 @@ pub mod package_data {
         SetStatus {
             b"SPACK": Tag,
             seq: u8,
-            b"\x46": Tag,
+            pack_type: u8,
             len: u8,
+            b"\x46": Tag,
             config_version: u8,
             log_version: u8,
             pos: u16,
@@ -478,7 +479,8 @@ pub mod package_data {
         KeyPress {
             b"SPACK": Tag,
             seq: u8,
-            b"\x39": Tag,
+            pack_type: u8,
+            b"\x02\x39": Tag,
             len: u8,
             key: u8,
         },
