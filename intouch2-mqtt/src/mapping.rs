@@ -1,13 +1,13 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use mqttrs::{Packet, Publish, QosPid};
+use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
 use serde::Deserialize;
-use tokio::task::JoinSet;
+use tokio::{sync::RwLock, task::JoinSet};
 
 use crate::{
     home_assistant,
     mqtt_session::{MqttError, Session as MqttSession, Topic},
-    spa::{SpaConnection, SpaError},
+    spa::{SpaCommand, SpaConnection, SpaError},
 };
 
 #[derive(Deserialize)]
@@ -58,6 +58,8 @@ pub enum MappingError {
     Mqtt(#[from] MqttError),
     #[error(transparent)]
     Spa(#[from] SpaError),
+    #[error("Could not communicate with Spa service: {0}")]
+    SpaCommand(#[from] tokio::sync::mpsc::error::SendError<SpaCommand>),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
     #[error("Tokio channel error: {0}")]
@@ -83,6 +85,16 @@ pub enum MappingType {
     U8 { u8_addr: u16 },
     U16 { u16_addr: u16 },
     Array { addr: u16, len: u16 },
+    Special(SpecialMode),
+}
+
+#[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
+#[serde(deny_unknown_fields, untagged)]
+pub enum CommandMappingType {
+    // U8 { u8_addr: u16 },
+    // U16 { u16_addr: u16 },
+    // Array { addr: u16, len: u16 },
+    // Key { },
     Special(SpecialMode),
 }
 
@@ -124,6 +136,7 @@ impl MappingType {
 #[serde(deny_unknown_fields, untagged)]
 pub enum MqttType {
     State { state: MappingType },
+    Command { command: CommandMappingType },
     Value(serde_json::Value),
 }
 
@@ -201,7 +214,8 @@ impl Mapping {
         };
 
         let device = self.device.clone();
-        let mut new_jobs = vec![];
+        let mqtt_waiter = Arc::new(RwLock::new(()));
+        let config_not_published = mqtt_waiter.clone().write_owned().await;
         let json_config = {
             let mut config = home_assistant::ConfigureGeneric {
                 base: home_assistant::ConfigureBase {
@@ -215,10 +229,10 @@ impl Mapping {
                 match value {
                     MqttType::State { state } => {
                         let topic = next_state_topic();
-                        let mut sender = mqtt.sender();
                         {
                             let topic = topic.clone();
                             let state = state.clone();
+                            let mut sender = mqtt.sender();
                             let mut data_subscription = if let Some(range) = state.range() {
                                 Some(spa.subscribe(range).await)
                             } else {
@@ -232,7 +246,9 @@ impl Mapping {
                             } else {
                                 None
                             };
-                            new_jobs.push(async move {
+                            let mqtt_config_complete = mqtt_waiter.clone();
+                            self.jobs.spawn(async move {
+                                mqtt_config_complete.read_owned().await;
                                 loop {
                                     let reported_value = match (
                                         &state,
@@ -293,6 +309,49 @@ impl Mapping {
                         }
                         config.args.insert(key.as_ref(), topic.into())
                     }
+                    MqttType::Command { command } => {
+                        let topic = next_state_topic();
+                        mqtt.mqtt_subscribe(vec![SubscribeTopic {
+                            topic_path: topic.clone(),
+                            qos: QoS::AtMostOnce,
+                        }])
+                        .await?;
+                        let mut receiver = mqtt.subscribe();
+                        let spa_sender = spa.sender();
+                        {
+                            let topic = topic.clone();
+                            let command = command.clone();
+                            self.jobs.spawn(async move {
+                                loop {
+                                    match (&command, &receiver.recv().await?.as_ref().packet) {
+                                        (
+                                            CommandMappingType::Special(SpecialMode::WatercareMode),
+                                            Packet::Publish(Publish {
+                                                dup: false,
+                                                topic_name,
+                                                payload,
+                                                ..
+                                            }),
+                                        ) if topic_name == &&topic => {
+                                            let Ok(valid_str) =
+                                                String::from_utf8(Vec::from(*payload))
+                                            else {
+                                                eprintln!("Invalid payload from MQTT: {payload:?}");
+                                                continue;
+                                            };
+                                            let Ok(mode) = valid_str.parse() else {
+                                                eprintln!("Invalid payload from MQTT: {valid_str}");
+                                                continue;
+                                            };
+                                            spa_sender.send(SpaCommand::SetWatercare(mode)).await?;
+                                        }
+                                        _ => (),
+                                    };
+                                }
+                            });
+                        }
+                        config.args.insert(key.as_ref(), topic.into())
+                    }
                     MqttType::Value(value) => config.args.insert(key.as_ref(), value.clone()),
                 };
             }
@@ -306,9 +365,7 @@ impl Mapping {
             payload: &json_config,
         });
         mqtt.send(config_packet).await?;
-        for job in new_jobs {
-            self.jobs.spawn(job);
-        }
+        drop(config_not_published);
         Ok(())
     }
 

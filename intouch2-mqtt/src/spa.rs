@@ -35,6 +35,8 @@ pub struct SpaConnection {
     full_state_download_interval: Arc<Mutex<time::Interval>>,
     state: Arc<sync::Mutex<GeckoDatas>>,
     state_subscribers: Arc<sync::Mutex<HashMap<Range<usize>, sync::watch::Sender<Box<[u8]>>>>>,
+    commanders: Arc<sync::Mutex<sync::mpsc::Receiver<SpaCommand>>>,
+    new_commander: Arc<sync::mpsc::Sender<SpaCommand>>,
     seq: Arc<AtomicU8>,
 }
 
@@ -68,6 +70,11 @@ impl WithBuffer for SpaConnection {
     fn make_buffer() -> [u8; 4096] {
         [0; 4096]
     }
+}
+
+#[derive(Debug)]
+pub enum SpaCommand {
+    SetWatercare(u8),
 }
 
 impl SpaConnection {
@@ -155,12 +162,15 @@ impl SpaConnection {
                         String::from_utf8_lossy(&name),
                         x
                     );
+                    let (new_commander, commanders) = sync::mpsc::channel(10);
                     break Ok(Self {
                         seq,
                         name: name.into(),
                         pipe: pipe.into(),
                         src,
                         dst,
+                        new_commander: new_commander.into(),
+                        commanders: Mutex::new(commanders).into(),
                         watercare_mode: Mutex::new(sync::watch::Sender::new(None)).into(),
                         ping_interval: Mutex::new(ping_interval).into(),
                         get_watercare_mode_interval: Mutex::new(get_watercare_mode_interval).into(),
@@ -179,6 +189,10 @@ impl SpaConnection {
 
     pub fn name(&self) -> &[u8] {
         self.name.as_ref()
+    }
+
+    pub fn sender(&self) -> sync::mpsc::Sender<SpaCommand> {
+        (*self.new_commander).clone()
     }
 
     pub async fn recv<'a>(&self) -> Result<(), SpaError> {
@@ -241,6 +255,36 @@ impl SpaConnection {
                             if let NetworkPackage::Addressed { data: NetworkPackageData::Pong, .. } = new_data? {
 
                             }
+                        }
+                    }
+                }
+            });
+        }
+        {
+            let commanders = self.commanders.clone();
+            let src = self.src.clone();
+            let dst = self.src.clone();
+            let tx = self.pipe.tx.clone();
+            let seq = self.seq.clone();
+            jobs.spawn(async move {
+                let mut commanders = commanders.lock().await;
+                loop {
+                    match commanders.recv().await {
+                        None => break Ok(()),
+                        Some(SpaCommand::SetWatercare(mode)) => {
+                            tx.send(
+                                NetworkPackage::Addressed {
+                                    src: Some((*src).into()),
+                                    dst: Some((*dst).into()),
+                                    data: package_data::SetWatercare {
+                                        seq: seq.fetch_add(1, Ordering::Relaxed),
+                                        mode,
+                                    }
+                                    .into(),
+                                }
+                                .to_static(),
+                            )
+                            .await?;
                         }
                     }
                 }
