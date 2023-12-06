@@ -8,6 +8,7 @@ use intouch2_mqtt::{
     port_forward::{FullPackagePipe, PortForwardBuilder, PortForwardError},
     spa::{SpaConnection, SpaError},
 };
+use serde_json::json;
 use std::{
     collections::VecDeque,
     net::IpAddr,
@@ -305,21 +306,8 @@ async fn main() -> anyhow::Result<()> {
                     if recent_packages.len() == recent_packages.capacity() {
                         recent_packages.pop_back();
                     }
-                    let serde_json::Value::Object(mut package_json) =
-                        serde_json::to_value(&package)?
-                    else {
-                        unreachable!()
-                    };
-                    let serde_json::Value::Object(direction_json) =
-                        serde_json::to_value(&direction)?
-                    else {
-                        unreachable!()
-                    };
-                    for (key, value) in direction_json.into_iter() {
-                        let previous = package_json.insert(key, value);
-                        debug_assert!(previous.is_none(), "Dumped package accidentally modified");
-                    }
-                    let key = serde_json::to_vec(&package_json)?;
+                    let key =
+                        serde_json::to_vec(&json!({ "direction": direction, "data": &package }))?;
                     recent_packages.push_front(package);
                     let package = mqttrs::Packet::Publish(mqttrs::Publish {
                         dup: false,
