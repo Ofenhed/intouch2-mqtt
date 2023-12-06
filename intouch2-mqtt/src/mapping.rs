@@ -77,6 +77,7 @@ pub enum MappingType {
     U8 { u8_addr: u16 },
     U16 { u16_addr: u16 },
     Array { addr: u16, len: u16 },
+    WatercareMode,
     Static(serde_json::Value),
 }
 
@@ -89,13 +90,13 @@ impl MappingType {
             Self::U8 { u8_addr: start }
             | Self::U16 { u16_addr: start }
             | Self::Array { addr: start, .. } => usize::from(*start),
-            Self::Static(_) => return None,
+            Self::Static(_) | Self::WatercareMode => return None,
         };
         let len = match self {
             Self::U8 { .. } => 1,
             Self::U16 { .. } => 2,
             Self::Array { len, .. } => usize::from(*len),
-            Self::Static(_) => unreachable!(),
+            Self::Static(_) | Self::WatercareMode => unreachable!(),
         };
         let end = start + len;
         Some(start..end)
@@ -203,27 +204,42 @@ impl Mapping {
                         {
                             let topic = topic.clone();
                             let state = state.clone();
-                            let mut subscription = if let Some(range) = state.range() {
+                            let mut data_subscription = if let Some(range) = state.range() {
                                 Some(spa.subscribe(range).await)
                             } else {
                                 None
                             };
+                            let mut mode_subscription =
+                                if matches!(state, MappingType::WatercareMode) {
+                                    Some(spa.subscribe_watercare_mode().await)
+                                } else {
+                                    None
+                                };
                             new_jobs.push(async move {
                                 loop {
                                     let reported_value = match (
                                         &state,
-                                        subscription.as_mut().map(|x| x.borrow_and_update()),
+                                        data_subscription.as_mut().map(|x| x.borrow_and_update()),
+                                        mode_subscription.as_mut().map(|x| x.borrow_and_update()),
                                     ) {
-                                        (MappingType::Static(value), None) => value.clone(),
-                                        (MappingType::Static(_), Some(_)) => unreachable!(),
-                                        (MappingType::U8 { .. }, Some(data)) => {
+                                        (MappingType::Static(value), None, None) => value.clone(),
+                                        (MappingType::Static(_), ..) => unreachable!(),
+                                        (MappingType::WatercareMode, _, Some(mode)) => {
+                                            match mode.as_ref() {
+                                                Some(mode) => {
+                                                    serde_json::Value::Number((*mode).into())
+                                                }
+                                                None => serde_json::Value::Null,
+                                            }
+                                        }
+                                        (MappingType::U8 { .. }, Some(data), None) => {
                                             let new_value: &[u8; 1] = data
                                                 .as_ref()
                                                 .try_into()
                                                 .expect("This will always be 1 byte");
                                             serde_json::Value::Number(new_value[0].into())
                                         }
-                                        (MappingType::U16 { .. }, Some(data)) => {
+                                        (MappingType::U16 { .. }, Some(data), None) => {
                                             let new_value: &[u8; 2] = data
                                                 .as_ref()
                                                 .try_into()
@@ -232,14 +248,14 @@ impl Mapping {
                                                 u16::from_be_bytes(*new_value).into(),
                                             )
                                         }
-                                        (MappingType::Array { .. }, Some(data)) => {
+                                        (MappingType::Array { .. }, Some(data), None) => {
                                             serde_json::Value::Array(
                                                 data.iter()
                                                     .map(|x| serde_json::Value::Number((*x).into()))
                                                     .collect(),
                                             )
                                         }
-                                        (_, None) => unreachable!(),
+                                        (..) => unreachable!("All valid modes handled"),
                                     };
                                     let payload = serde_json::to_vec(&reported_value)?;
                                     let package = Packet::Publish(Publish {
@@ -250,7 +266,7 @@ impl Mapping {
                                         payload: &payload,
                                     });
                                     sender.send(&package).await?;
-                                    if let Some(subscription) = &mut subscription {
+                                    if let Some(subscription) = &mut data_subscription {
                                         subscription.changed().await.unwrap();
                                     } else {
                                         return Ok(());

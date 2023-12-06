@@ -29,7 +29,7 @@ pub struct SpaConnection {
     src: Arc<[u8]>,
     dst: Arc<[u8]>,
     name: Arc<[u8]>,
-    mode: Arc<Mutex<sync::watch::Sender<Option<u8>>>>,
+    watercare_mode: Arc<Mutex<sync::watch::Sender<Option<u8>>>>,
     ping_interval: Arc<Mutex<time::Interval>>,
     full_state_download_interval: Arc<Mutex<time::Interval>>,
     state: Arc<sync::Mutex<GeckoDatas>>,
@@ -83,6 +83,10 @@ impl SpaConnection {
                     .subscribe()
             }
         }
+    }
+
+    pub async fn subscribe_watercare_mode(&self) -> sync::watch::Receiver<Option<u8>> {
+        self.watercare_mode.lock().await.subscribe()
     }
 
     pub async fn len(&self) -> usize {
@@ -150,7 +154,7 @@ impl SpaConnection {
                         pipe: pipe.into(),
                         src,
                         dst,
-                        mode: Mutex::new(sync::watch::Sender::new(None)).into(),
+                        watercare_mode: Mutex::new(sync::watch::Sender::new(None)).into(),
                         ping_interval: Mutex::new(ping_interval).into(),
                         full_state_download_interval: Mutex::new(full_state_download_interval)
                             .into(),
@@ -308,7 +312,7 @@ impl SpaConnection {
             let my_id = self.src.clone();
             let tx = self.pipe.tx.clone();
             let seq = self.seq.clone();
-            let saved_mode = self.mode.clone();
+            let saved_mode = self.watercare_mode.clone();
             let notify_dirty = notify_dirty.clone();
             let gecko_data = self.state.clone();
             jobs.spawn(async move {
