@@ -307,7 +307,7 @@ async fn main() -> anyhow::Result<()> {
                         recent_packages.pop_back();
                     }
                     let key =
-                        serde_json::to_vec(&json!({ "direction": direction, "data": &package }))?;
+                        serde_json::to_vec(&json!(( direction, &package )))?;
                     recent_packages.push_front(package);
                     let package = mqttrs::Packet::Publish(mqttrs::Publish {
                         dup: false,
