@@ -241,7 +241,7 @@ impl Mapping {
                                     ) {
                                         (
                                             MappingType::Special(SpecialMode::WatercareMode),
-                                            _,
+                                            None,
                                             Some(mode),
                                         ) => match mode.as_ref() {
                                             Some(mode) => serde_json::Value::Number((*mode).into()),

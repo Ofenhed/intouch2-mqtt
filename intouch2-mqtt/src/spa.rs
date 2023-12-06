@@ -31,6 +31,7 @@ pub struct SpaConnection {
     name: Arc<[u8]>,
     watercare_mode: Arc<Mutex<sync::watch::Sender<Option<u8>>>>,
     ping_interval: Arc<Mutex<time::Interval>>,
+    get_watercare_mode_interval: Arc<Mutex<time::Interval>>,
     full_state_download_interval: Arc<Mutex<time::Interval>>,
     state: Arc<sync::Mutex<GeckoDatas>>,
     state_subscribers: Arc<sync::Mutex<HashMap<Range<usize>, sync::watch::Sender<Box<[u8]>>>>>,
@@ -130,7 +131,13 @@ impl SpaConnection {
         let mut full_state_download_interval =
             time::interval_at(time::Instant::now(), Duration::from_secs(1800));
         let mut ping_interval = time::interval_at(time::Instant::now(), Duration::from_secs(3));
-        for interval in [&mut full_state_download_interval, &mut ping_interval] {
+        let mut get_watercare_mode_interval =
+            time::interval_at(time::Instant::now(), Duration::from_secs(1800));
+        for interval in [
+            &mut full_state_download_interval,
+            &mut ping_interval,
+            &mut get_watercare_mode_interval,
+        ] {
             interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
         }
         let seq = Default::default();
@@ -156,6 +163,7 @@ impl SpaConnection {
                         dst,
                         watercare_mode: Mutex::new(sync::watch::Sender::new(None)).into(),
                         ping_interval: Mutex::new(ping_interval).into(),
+                        get_watercare_mode_interval: Mutex::new(get_watercare_mode_interval).into(),
                         full_state_download_interval: Mutex::new(full_state_download_interval)
                             .into(),
                         state: Arc::new(state.into()),
@@ -239,6 +247,49 @@ impl SpaConnection {
             });
         }
         {
+            let watercare_interval = self.get_watercare_mode_interval.clone();
+            let src = self.src.clone();
+            let dst = self.dst.clone();
+            let tx = self.pipe.tx.clone();
+            let watercare_mode = self.watercare_mode.clone();
+            let seq = self.seq.clone();
+            let mut listener = self.pipe.subscribe();
+            jobs.spawn(async move {
+                let mut watercare_interval = watercare_interval.lock().await;
+                loop {
+                    select! {
+                        _ = watercare_interval.tick() => {
+                            tx.send(NetworkPackage::Addressed {
+                                src: Some(src.as_ref().into()),
+                                dst: Some(dst.as_ref().into()),
+                                data: NetworkPackageData::GetWatercare(
+                                    package_data::GetWatercare {
+                                        seq: seq.fetch_add(1, Ordering::Relaxed)
+                                    }
+                                )
+                            }.to_static()).await?;
+                        }
+                        new_data = listener.recv() => {
+                            match new_data? {
+                                NetworkPackage::Addressed { data: NetworkPackageData::WatercareGet(package_data::WatercareGet { mode }), .. }
+                                | NetworkPackage::Addressed { data: NetworkPackageData::WatercareSet(package_data::WatercareSet { mode }), .. } => {
+                                    watercare_mode.lock().await.send_if_modified(|old_value| {
+                                        if *old_value != Some(mode) {
+                                            *old_value = Some(mode);
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    });
+                                },
+                                _ => (),
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        {
             let interval = self.full_state_download_interval.clone();
             let tx = self.pipe.tx.clone();
             let pipe = self.pipe.clone();
@@ -312,7 +363,6 @@ impl SpaConnection {
             let my_id = self.src.clone();
             let tx = self.pipe.tx.clone();
             let seq = self.seq.clone();
-            let saved_mode = self.watercare_mode.clone();
             let notify_dirty = notify_dirty.clone();
             let gecko_data = self.state.clone();
             jobs.spawn(async move {
@@ -335,13 +385,6 @@ impl SpaConnection {
                             old_data.copy_from_slice(new_data.as_ref());
                             notify_dirty.notify_waiters();
                         }
-                        NetworkPackage::Addressed {
-                            dst,
-                            data: NetworkPackageData::WatercareSet(package_data::WatercareSet { mode }),
-                        .. } if matches!(dst, Some(ref dst) if *dst == my_id.as_ref()) => {
-                            let saved_mode = saved_mode.lock().await;
-                            saved_mode.send_replace(Some(mode));
-                        },
                         NetworkPackage::Addressed {
                             data:
                                 NetworkPackageData::PushStatus(package_data::PushStatus {
