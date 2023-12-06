@@ -71,39 +71,56 @@ pub struct Mapping {
     jobs: JoinSet<Result<(), MappingError>>,
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
+#[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
+#[serde(deny_unknown_fields, rename_all = "snake_case")]
+pub enum SpecialMode {
+    WatercareMode,
+}
+
+#[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
 #[serde(deny_unknown_fields, untagged)]
 pub enum MappingType {
     U8 { u8_addr: u16 },
     U16 { u16_addr: u16 },
     Array { addr: u16, len: u16 },
-    WatercareMode,
-    Static(serde_json::Value),
+    Special(SpecialMode),
+}
+
+#[cfg(test)]
+mod more_tests {
+    #[test]
+    fn create_mqtt_type() -> anyhow::Result<()> {
+        let parsed = serde_json::from_str(r#"{"state": "watercare_mode"}"#)?;
+        assert!(matches!(
+            parsed,
+            super::MqttType::State {
+                state: super::MappingType::Special(super::SpecialMode::WatercareMode),
+            }
+        ));
+        Ok(())
+    }
 }
 
 impl MappingType {
-    pub fn is_static(&self) -> bool {
-        matches!(self, Self::Static(_))
-    }
     pub fn range(&self) -> Option<std::ops::Range<usize>> {
         let start = match self {
             Self::U8 { u8_addr: start }
             | Self::U16 { u16_addr: start }
             | Self::Array { addr: start, .. } => usize::from(*start),
-            Self::Static(_) | Self::WatercareMode => return None,
+            Self::Special(_) => return None,
         };
         let len = match self {
             Self::U8 { .. } => 1,
             Self::U16 { .. } => 2,
             Self::Array { len, .. } => usize::from(*len),
-            Self::Static(_) | Self::WatercareMode => unreachable!(),
+            Self::Special(_) => unreachable!(),
         };
         let end = start + len;
         Some(start..end)
     }
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
+#[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
 #[serde(deny_unknown_fields, untagged)]
 pub enum MqttType {
     State { state: MappingType },
@@ -116,7 +133,6 @@ pub struct GenericMapping {
     pub mqtt_type: &'static str,
     pub name: &'static str,
     pub unique_id: &'static str,
-    // pub topics: HashMap<&'a str, MappingType<'a>>,
     #[serde(flatten)]
     pub mqtt_values: HashMap<&'static str, MqttType>,
 }
@@ -160,7 +176,6 @@ mod tests {
 impl GenericMapping {
     pub fn config_is_static(&self) -> bool {
         true
-        // self.mqtt_values.values().find(|x| !x.is_static()).is_none()
     }
 }
 
@@ -209,12 +224,14 @@ impl Mapping {
                             } else {
                                 None
                             };
-                            let mut mode_subscription =
-                                if matches!(state, MappingType::WatercareMode) {
-                                    Some(spa.subscribe_watercare_mode().await)
-                                } else {
-                                    None
-                                };
+                            let mut mode_subscription = if matches!(
+                                state,
+                                MappingType::Special(SpecialMode::WatercareMode)
+                            ) {
+                                Some(spa.subscribe_watercare_mode().await)
+                            } else {
+                                None
+                            };
                             new_jobs.push(async move {
                                 loop {
                                     let reported_value = match (
@@ -222,16 +239,14 @@ impl Mapping {
                                         data_subscription.as_mut().map(|x| x.borrow_and_update()),
                                         mode_subscription.as_mut().map(|x| x.borrow_and_update()),
                                     ) {
-                                        (MappingType::Static(value), None, None) => value.clone(),
-                                        (MappingType::Static(_), ..) => unreachable!(),
-                                        (MappingType::WatercareMode, _, Some(mode)) => {
-                                            match mode.as_ref() {
-                                                Some(mode) => {
-                                                    serde_json::Value::Number((*mode).into())
-                                                }
-                                                None => serde_json::Value::Null,
-                                            }
-                                        }
+                                        (
+                                            MappingType::Special(SpecialMode::WatercareMode),
+                                            _,
+                                            Some(mode),
+                                        ) => match mode.as_ref() {
+                                            Some(mode) => serde_json::Value::Number((*mode).into()),
+                                            None => serde_json::Value::Null,
+                                        },
                                         (MappingType::U8 { .. }, Some(data), None) => {
                                             let new_value: &[u8; 1] = data
                                                 .as_ref()
