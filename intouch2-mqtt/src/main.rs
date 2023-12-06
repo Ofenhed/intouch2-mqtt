@@ -10,6 +10,7 @@ use intouch2_mqtt::{
 };
 use serde_json::json;
 use std::{
+    borrow::Cow,
     collections::VecDeque,
     net::IpAddr,
     path::PathBuf,
@@ -290,7 +291,7 @@ async fn main() -> anyhow::Result<()> {
         (_, None) => (),
         (Some(mqtt), Some(dump_topic)) => {
             let mut mqtt_sender = mqtt.sender();
-            let topic = dump_topic.clone();
+            let topic = PathBuf::from(dump_topic.as_ref());
             let mut package_pipe = forward_builder.dump_packages();
             join_set.spawn(async move {
                 let mut recent_packages = VecDeque::with_capacity(10);
@@ -306,14 +307,26 @@ async fn main() -> anyhow::Result<()> {
                     if recent_packages.len() == recent_packages.capacity() {
                         recent_packages.pop_back();
                     }
-                    let key =
-                        serde_json::to_vec(&json!({ "direction": direction, "data": &package }))?;
+                    let package_object = serde_json::to_value(&package)?;
+                    let topic = match &package_object {
+                        serde_json::Value::Object(object) => {
+                            match object.keys().collect::<Box<_>>()[..] {
+                                [struct_name] => Cow::Owned(topic.join(struct_name)),
+                                _ => Cow::Borrowed(&topic),
+                            }
+                        }
+                        _ => Cow::Borrowed(&topic),
+                    };
+                    let topic = topic.to_string_lossy();
+                    let key = serde_json::to_vec(
+                        &json!({ "direction": direction, "data": package_object }),
+                    )?;
                     recent_packages.push_front(package);
                     let package = mqttrs::Packet::Publish(mqttrs::Publish {
                         dup: false,
                         qospid: mqttrs::QosPid::AtMostOnce,
                         retain: false,
-                        topic_name: &topic,
+                        topic_name: topic.as_ref(),
                         payload: &key,
                     });
                     mqtt_sender.send(&package).await?;
