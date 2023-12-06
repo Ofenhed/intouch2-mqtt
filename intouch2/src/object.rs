@@ -500,7 +500,24 @@ pub mod package_data {
             length: u8,
             data: &[u8],
         },
-        GetWaterQuality(b"GETWC": Simple),
+        GetWatercare {
+            b"GETWC": Tag,
+            remainder: u8,
+        },
+        GetWatercareMode {
+            b"WCGET": Tag,
+            seq: u8,
+        },
+        SetWatercareMode {
+            b"SETWC": Tag,
+            seq: u8,
+            mode: u8,
+        },
+        RequestWatercare {
+            b"REQWC": Tag,
+            remainder: u8,
+        },
+        WatercareRequest(b"WCREQ": Tailing),
         Unknown(b"": Tailing),
       }
     }
