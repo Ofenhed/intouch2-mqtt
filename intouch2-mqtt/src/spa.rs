@@ -272,6 +272,7 @@ impl SpaConnection {
                     match commanders.recv().await {
                         None => break Ok(()),
                         Some(SpaCommand::SetWatercare(mode)) => {
+                            debug_assert!(mode <= 4);
                             tx.send(
                                 NetworkPackage::Addressed {
                                     src: Some((*src).into()),
