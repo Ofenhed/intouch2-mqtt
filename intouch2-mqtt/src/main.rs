@@ -1,12 +1,14 @@
 use anyhow::Context;
 use clap::Parser;
+use intouch2::object::{NetworkPackage, NetworkPackageData};
 use intouch2_mqtt::{
     home_assistant,
     mapping::{self, Mapping},
     mqtt_session::{MqttAuth, SessionBuilder as MqttSession},
-    port_forward::{FullPackagePipe, PortForward, PortForwardError},
+    port_forward::{FullPackagePipe, PortForwardBuilder, PortForwardError},
     spa::{SpaConnection, SpaError},
 };
+use serde_json::json;
 use std::{
     net::IpAddr,
     path::PathBuf,
@@ -151,9 +153,10 @@ struct Command {
     #[serde(default)]
     mqtt_availability_topic: Option<Arc<str>>,
 
-    /// Set this to dump memory changes to the specified MQTT topic.
+    /// Set this to dump memory changes to the specified MQTT topic as
+    /// "{package_dump_mqtt_topic}/{client_id}".
     #[arg(long)]
-    key_press_mqtt_topic: Option<Arc<str>>,
+    package_dump_mqtt_topic: Option<Arc<str>>,
 
     /// Set this to dump memory changes to the specified MQTT topic as
     /// "{memory_changes_mqtt_topic}/{changed_address}".
@@ -263,12 +266,13 @@ async fn main() -> anyhow::Result<()> {
         .spa_forward_listen_ip
         .as_ref()
         .map(|x| std::net::SocketAddr::new(*x, args.spa_forward_listen_port));
-    let forward = PortForward {
+    let mut forward_builder = PortForwardBuilder {
         listen_addr: forward_addr,
         target_addr: spa_addr,
         handshake_timeout: Duration::from_secs(args.spa_handshake_timeout.into()),
         udp_timeout: Duration::from_secs(args.spa_udp_timeout.into()),
         verbose: args.verbose,
+        package_dump_pipe: None,
         dump_traffic: args.dump_traffic,
         local_connection: args.spa_memory_size.map(|_| spa_pipe.forwarder),
     };
@@ -276,6 +280,39 @@ async fn main() -> anyhow::Result<()> {
         SpaConnected(Arc<SpaConnection>),
     }
     let mut join_set = JoinSet::<anyhow::Result<JoinResult>>::new();
+    match (&mut mqtt, &args.package_dump_mqtt_topic) {
+        (None, Some(_)) => {
+            return Err(Error::InvalidArguments(
+                "package_dump_mqtt_topic requires a MQTT connection",
+            ))?
+        }
+        (_, None) => (),
+        (Some(mqtt), Some(dump_topic)) => {
+            let mut mqtt_sender = mqtt.sender();
+            let topic = dump_topic.clone();
+            let mut package_pipe = forward_builder.dump_packages();
+            join_set.spawn(async move {
+                loop {
+                    let (direction, package) = package_pipe.recv().await?;
+                    match package {
+                        NetworkPackageData::Ping | NetworkPackageData::Pong => continue,
+                        _ => (),
+                    }
+                    let key =
+                        serde_json::to_vec(&json!({ "direction": direction, "data": package }))?;
+                    let package = mqttrs::Packet::Publish(mqttrs::Publish {
+                        dup: false,
+                        qospid: mqttrs::QosPid::AtMostOnce,
+                        retain: false,
+                        topic_name: &topic,
+                        payload: &key,
+                    });
+                    mqtt_sender.send(&package).await?;
+                }
+            });
+        }
+    };
+    let forward = forward_builder.build().await?;
     join_set.spawn(async move {
         println!("Forwarding");
         forward.run().await?;
@@ -306,7 +343,7 @@ async fn main() -> anyhow::Result<()> {
     if let Some(mqtt) = &mqtt {
         mqtt.notify_online().await?;
     }
-    match (&mut mqtt, &spa, &args.key_press_mqtt_topic) {
+    match (&mut mqtt, &spa, &args.package_dump_mqtt_topic) {
         (Some(mqtt), Some(spa), Some(memory_change_topic)) => {
             let mut mqtt_sender = mqtt.sender();
             let mut key_presses = spa.subscribe_keypress();

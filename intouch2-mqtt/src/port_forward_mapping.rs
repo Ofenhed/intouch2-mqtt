@@ -82,7 +82,7 @@ impl<T: Send + Sync> ForwardMappingInfo<T> {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ForwardMapping<T> {
     ids: HashMap<Arc<PeerIdType>, Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>>,
     addrs: HashMap<Arc<PeerAddrType>, Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>>,
