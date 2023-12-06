@@ -12,10 +12,7 @@ use std::{
 use intouch2::{
     datas::GeckoDatas,
     generate_uuid,
-    object::{
-        package_data::{self, KeyPress},
-        NetworkPackage, NetworkPackageData, StatusChange,
-    },
+    object::{package_data, NetworkPackage, NetworkPackageData, StatusChange},
     parser::ParseError,
 };
 use tokio::{
@@ -32,11 +29,11 @@ pub struct SpaConnection {
     src: Arc<[u8]>,
     dst: Arc<[u8]>,
     name: Arc<[u8]>,
+    mode: Arc<Mutex<sync::watch::Sender<Option<u8>>>>,
     ping_interval: Arc<Mutex<time::Interval>>,
     full_state_download_interval: Arc<Mutex<time::Interval>>,
     state: Arc<sync::Mutex<GeckoDatas>>,
     state_subscribers: Arc<sync::Mutex<HashMap<Range<usize>, sync::watch::Sender<Box<[u8]>>>>>,
-    keypress_subscribers: Arc<sync::broadcast::Sender<u8>>,
     seq: Arc<AtomicU8>,
 }
 
@@ -86,10 +83,6 @@ impl SpaConnection {
                     .subscribe()
             }
         }
-    }
-
-    pub fn subscribe_keypress(&self) -> sync::broadcast::Receiver<u8> {
-        self.keypress_subscribers.subscribe()
     }
 
     pub async fn len(&self) -> usize {
@@ -157,12 +150,12 @@ impl SpaConnection {
                         pipe: pipe.into(),
                         src,
                         dst,
+                        mode: Mutex::new(sync::watch::Sender::new(None)).into(),
                         ping_interval: Mutex::new(ping_interval).into(),
                         full_state_download_interval: Mutex::new(full_state_download_interval)
                             .into(),
                         state: Arc::new(state.into()),
                         state_subscribers: Default::default(),
-                        keypress_subscribers: sync::broadcast::Sender::new(5).into(),
                     });
                 }
                 NetworkPackage::Hello(_) => continue,
@@ -245,7 +238,6 @@ impl SpaConnection {
             let interval = self.full_state_download_interval.clone();
             let tx = self.pipe.tx.clone();
             let pipe = self.pipe.clone();
-            let keypress_sender = self.keypress_subscribers.clone();
             let src = self.src.clone();
             let dst = self.dst.clone();
             let seq = self.seq.clone();
@@ -299,12 +291,6 @@ impl SpaConnection {
                                         data_read = end;
                                         expected = next;
                                     }
-                                    NetworkPackage::Addressed {
-                                        data: NetworkPackageData::KeyPress(KeyPress { key, .. }),
-                                        ..
-                                    } => {
-                                        keypress_sender.send(key)?;
-                                    }
                                     _ => continue,
                                 },
                                 Err(_timeout) => continue 'retry,
@@ -322,6 +308,7 @@ impl SpaConnection {
             let my_id = self.src.clone();
             let tx = self.pipe.tx.clone();
             let seq = self.seq.clone();
+            let saved_mode = self.mode.clone();
             let notify_dirty = notify_dirty.clone();
             let gecko_data = self.state.clone();
             jobs.spawn(async move {
@@ -344,6 +331,13 @@ impl SpaConnection {
                             old_data.copy_from_slice(new_data.as_ref());
                             notify_dirty.notify_waiters();
                         }
+                        NetworkPackage::Addressed {
+                            dst,
+                            data: NetworkPackageData::WatercareSet(package_data::WatercareSet { mode }),
+                        .. } if matches!(dst, Some(ref dst) if *dst == my_id.as_ref()) => {
+                            let saved_mode = saved_mode.lock().await;
+                            saved_mode.send_replace(Some(mode));
+                        },
                         NetworkPackage::Addressed {
                             data:
                                 NetworkPackageData::PushStatus(package_data::PushStatus {

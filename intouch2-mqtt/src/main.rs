@@ -365,31 +365,6 @@ async fn main() -> anyhow::Result<()> {
     if let Some(mqtt) = &mqtt {
         mqtt.notify_online().await?;
     }
-    match (&mut mqtt, &spa, &args.package_dump_mqtt_topic) {
-        (Some(mqtt), Some(spa), Some(memory_change_topic)) => {
-            let mut mqtt_sender = mqtt.sender();
-            let mut key_presses = spa.subscribe_keypress();
-            join_set.spawn(async move {
-                loop {
-                    let key = format!("{}", key_presses.recv().await?);
-                    let package = mqttrs::Packet::Publish(mqttrs::Publish {
-                        dup: false,
-                        qospid: mqttrs::QosPid::AtMostOnce,
-                        retain: false,
-                        topic_name: memory_change_topic,
-                        payload: key.as_bytes(),
-                    });
-                    mqtt_sender.send(&package).await?;
-                }
-            });
-        }
-        (None, _, Some(_)) | (_, None, Some(_)) => {
-            return Err(Error::InvalidArguments(
-                "key_press_mqtt_topic requires both mqtt and spa_memory_size to be set",
-            ))?
-        }
-        (_, _, None) => (),
-    }
     match (mqtt, &spa, &args.memory_changes_mqtt_topic) {
         (Some(mut mqtt), Some(spa), memory_change_topic) => {
             if let Some(memory_change_topic) = memory_change_topic {
