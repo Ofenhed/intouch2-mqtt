@@ -283,6 +283,8 @@ impl Mapping {
                                     sender.send(&package).await?;
                                     if let Some(subscription) = &mut data_subscription {
                                         subscription.changed().await.unwrap();
+                                    } else if let Some(subscription) = &mut mode_subscription {
+                                        subscription.changed().await.unwrap();
                                     } else {
                                         return Ok(());
                                     }
