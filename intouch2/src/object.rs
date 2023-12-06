@@ -504,13 +504,17 @@ pub mod package_data {
             b"GETWC": Tag,
             remainder: u8,
         },
-        GetWatercareMode {
+        WatercareGet {
             b"WCGET": Tag,
             seq: u8,
         },
-        SetWatercareMode {
+        SetWatercare {
             b"SETWC": Tag,
             seq: u8,
+            mode: u8,
+        },
+        WatercareSet {
+            b"WCSET": Tag,
             mode: u8,
         },
         RequestWatercare {
