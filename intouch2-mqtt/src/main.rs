@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::Parser;
-use intouch2::object::{NetworkPackage, NetworkPackageData};
+use intouch2::object::NetworkPackageData;
 use intouch2_mqtt::{
     home_assistant,
     mapping::{self, Mapping},
@@ -10,6 +10,7 @@ use intouch2_mqtt::{
 };
 use serde_json::json;
 use std::{
+    collections::VecDeque,
     net::IpAddr,
     path::PathBuf,
     sync::{Arc, OnceLock},
@@ -292,14 +293,22 @@ async fn main() -> anyhow::Result<()> {
             let topic = dump_topic.clone();
             let mut package_pipe = forward_builder.dump_packages();
             join_set.spawn(async move {
+                let mut recent_packages = VecDeque::with_capacity(10);
                 loop {
                     let (direction, package) = package_pipe.recv().await?;
                     match package {
                         NetworkPackageData::Ping | NetworkPackageData::Pong => continue,
                         _ => (),
                     }
+                    if recent_packages.contains(&package) {
+                        continue;
+                    }
+                    if recent_packages.len() == recent_packages.capacity() {
+                        recent_packages.pop_back();
+                    }
                     let key =
-                        serde_json::to_vec(&json!({ "direction": direction, "data": package }))?;
+                        serde_json::to_vec(&json!({ "direction": direction, "data": &package }))?;
+                    recent_packages.push_front(package);
                     let package = mqttrs::Packet::Publish(mqttrs::Publish {
                         dup: false,
                         qospid: mqttrs::QosPid::AtMostOnce,
