@@ -373,13 +373,25 @@ async fn main() -> anyhow::Result<()> {
                 let mut spa_data = spa.subscribe(0..len).await;
                 let memory_change_topic = PathBuf::from(memory_change_topic.as_ref());
                 join_set.spawn(async move {
-                    let mut previous: Box<[u8]> = spa_data.borrow_and_update().as_ref().into();
+                    let mut previous: Box<[u8]> = loop {
+                        {
+                            let borrowed = spa_data.borrow_and_update();
+                            if let Some(valid_data) = borrowed.as_deref() {
+                                break valid_data.into();
+                            }
+                        }
+                        spa_data.changed().await?;
+                    };
+
                     let mut differences = Vec::with_capacity(len);
                     loop {
                         differences.clear();
                         {
                             spa_data.changed().await?;
                             let data = spa_data.borrow_and_update();
+                            let Some(data) = data.as_deref() else {
+                                continue;
+                            };
                             for i in 0..len {
                                 if previous[i] != data[i] {
                                     differences.push((i, data[i]));
@@ -444,7 +456,7 @@ async fn main() -> anyhow::Result<()> {
         // let spa_worker = spa.clone();
         join_set.spawn(async move {
             loop {
-                spa.recv().await?;
+                spa.run().await?;
             }
         });
     }

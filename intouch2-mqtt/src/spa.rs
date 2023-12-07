@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     ops::{Index, Range},
     sync::{
-        atomic::{AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
         Arc,
     },
     time::Duration,
@@ -34,7 +34,9 @@ pub struct SpaConnection {
     get_watercare_mode_interval: Arc<Mutex<time::Interval>>,
     full_state_download_interval: Arc<Mutex<time::Interval>>,
     state: Arc<sync::Mutex<GeckoDatas>>,
-    state_subscribers: Arc<sync::Mutex<HashMap<Range<usize>, sync::watch::Sender<Box<[u8]>>>>>,
+    state_valid: Arc<AtomicBool>,
+    state_subscribers:
+        Arc<sync::Mutex<HashMap<Range<usize>, sync::watch::Sender<Option<Box<[u8]>>>>>>,
     commanders: Arc<sync::Mutex<sync::mpsc::Receiver<SpaCommand>>>,
     new_commander: Arc<sync::mpsc::Sender<SpaCommand>>,
     seq: Arc<AtomicU8>,
@@ -78,7 +80,7 @@ pub enum SpaCommand {
 }
 
 impl SpaConnection {
-    pub async fn subscribe(&self, index: Range<usize>) -> sync::watch::Receiver<Box<[u8]>> {
+    pub async fn subscribe(&self, index: Range<usize>) -> sync::watch::Receiver<Option<Box<[u8]>>> {
         let mut subscribers = self.state_subscribers.lock().await;
         match subscribers.entry(index) {
             std::collections::hash_map::Entry::Occupied(subscribers) => {
@@ -86,8 +88,12 @@ impl SpaConnection {
             }
             std::collections::hash_map::Entry::Vacant(new) => {
                 let state = self.state.lock().await;
-                let current_value = state.index(new.key().clone());
-                new.insert(sync::watch::Sender::new(current_value.into()))
+                let current_value = if self.state_valid.load(Ordering::Acquire) {
+                    Some(state.index(new.key().clone()).into())
+                } else {
+                    None
+                };
+                new.insert(sync::watch::Sender::new(current_value))
                     .subscribe()
             }
         }
@@ -170,6 +176,7 @@ impl SpaConnection {
                         src,
                         dst,
                         new_commander: new_commander.into(),
+                        state_valid: Arc::new(false.into()),
                         commanders: Mutex::new(commanders).into(),
                         watercare_mode: Mutex::new(sync::watch::Sender::new(None)).into(),
                         ping_interval: Mutex::new(ping_interval).into(),
@@ -195,7 +202,7 @@ impl SpaConnection {
         (*self.new_commander).clone()
     }
 
-    pub async fn recv<'a>(&self) -> Result<(), SpaError> {
+    pub async fn run<'a>(&self) -> Result<(), SpaError> {
         let notify_dirty = Arc::new(tokio::sync::Notify::new());
         let gecko_data_len = u16::try_from(self.state.lock().await.len()).expect(
             "If this isn't u16, then the data types are incorrect, and we should not keep going",
@@ -205,9 +212,13 @@ impl SpaConnection {
             let notifier = notify_dirty.clone();
             let gecko_datas = self.state.clone();
             let subscribers = self.state_subscribers.clone();
+            let state_valid = self.state_valid.clone();
             jobs.spawn(async move {
                 loop {
                     notifier.notified().await;
+                    if !state_valid.load(Ordering::Acquire) {
+                        continue;
+                    }
                     let mut gecko_datas = gecko_datas.lock().await;
                     let subscribers = subscribers.lock().await;
                     while let Some(dirty_range) = gecko_datas.peek_dirty() {
@@ -218,13 +229,16 @@ impl SpaConnection {
                                 || dirty_range.contains(&range.end)
                             {
                                 let data = gecko_datas.index(range.clone());
-                                subscriber.send_if_modified(|old_data| {
-                                    if data != old_data.as_ref() {
+                                subscriber.send_if_modified(|old_data| match old_data {
+                                    Some(old_data) if data != old_data.as_ref() => {
                                         old_data.copy_from_slice(data);
                                         true
-                                    } else {
-                                        false
                                     }
+                                    empty @ None => {
+                                        *empty = Some(Box::from(data));
+                                        true
+                                    }
+                                    _ => false,
                                 });
                             }
                         }
@@ -343,6 +357,7 @@ impl SpaConnection {
             let seq = self.seq.clone();
             let gecko_data = self.state.clone();
             let notify_dirty = notify_dirty.clone();
+            let mut state_valid = Some(self.state_valid.clone());
             jobs.spawn(async move {
                 loop {
                     interval.lock().await.tick().await;
@@ -396,6 +411,9 @@ impl SpaConnection {
                                 Err(_timeout) => continue 'retry,
                             }
                         }
+                    }
+                    if let Some(state_valid) = std::mem::take(&mut state_valid) {
+                        state_valid.store(true, Ordering::Release);
                     }
                     notify_dirty.notify_waiters();
                     interval.lock().await.reset();

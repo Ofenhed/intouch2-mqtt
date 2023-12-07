@@ -259,50 +259,60 @@ impl Mapping {
                                             MappingType::Special(SpecialMode::WatercareMode),
                                             None,
                                             Some(mode),
-                                        ) => match mode.as_ref() {
-                                            Some(mode) => serde_json::Value::Number((*mode).into()),
-                                            None => serde_json::Value::Null,
-                                        },
+                                        ) => mode
+                                            .as_ref()
+                                            .map(|mode| serde_json::Value::Number((*mode).into())),
                                         (MappingType::U8 { .. }, Some(data), None) => {
-                                            let new_value: &[u8; 1] = data
-                                                .as_ref()
-                                                .try_into()
-                                                .expect("This will always be 1 byte");
-                                            serde_json::Value::Number(new_value[0].into())
+                                            data.as_ref().map(|valid_data| {
+                                                let new_value: &[u8; 1] = valid_data
+                                                    .as_ref()
+                                                    .try_into()
+                                                    .expect("This will always be 1 byte");
+                                                serde_json::Value::Number(new_value[0].into())
+                                            })
                                         }
                                         (MappingType::U16 { .. }, Some(data), None) => {
-                                            let new_value: &[u8; 2] = data
-                                                .as_ref()
-                                                .try_into()
-                                                .expect("This will always be 2 bytes");
-                                            serde_json::Value::Number(
-                                                u16::from_be_bytes(*new_value).into(),
-                                            )
+                                            data.as_ref().map(|valid_data| {
+                                                let new_value: &[u8; 2] = valid_data
+                                                    .as_ref()
+                                                    .try_into()
+                                                    .expect("This will always be 2 bytes");
+                                                serde_json::Value::Number(
+                                                    u16::from_be_bytes(*new_value).into(),
+                                                )
+                                            })
                                         }
                                         (MappingType::Array { .. }, Some(data), None) => {
-                                            serde_json::Value::Array(
-                                                data.iter()
-                                                    .map(|x| serde_json::Value::Number((*x).into()))
-                                                    .collect(),
-                                            )
+                                            data.as_ref().map(|valid_data| {
+                                                serde_json::Value::Array(
+                                                    valid_data
+                                                        .iter()
+                                                        .map(|x| {
+                                                            serde_json::Value::Number((*x).into())
+                                                        })
+                                                        .collect(),
+                                                )
+                                            })
                                         }
                                         (..) => unreachable!("All valid modes handled"),
                                     };
-                                    let payload = serde_json::to_vec(&reported_value)?;
-                                    let package = Packet::Publish(Publish {
-                                        dup: false,
-                                        qospid: QosPid::AtMostOnce,
-                                        retain: false,
-                                        topic_name: &topic,
-                                        payload: &payload,
-                                    });
-                                    sender.send(&package).await?;
+                                    if let Some(reported_value) = reported_value {
+                                        let payload = serde_json::to_vec(&reported_value)?;
+                                        let package = Packet::Publish(Publish {
+                                            dup: false,
+                                            qospid: QosPid::AtMostOnce,
+                                            retain: false,
+                                            topic_name: &topic,
+                                            payload: &payload,
+                                        });
+                                        sender.send(&package).await?;
+                                    }
                                     if let Some(subscription) = &mut data_subscription {
                                         subscription.changed().await.unwrap();
                                     } else if let Some(subscription) = &mut mode_subscription {
                                         subscription.changed().await.unwrap();
                                     } else {
-                                        return Ok(());
+                                        unreachable!("Only subscriptions are handled here")
                                     }
                                 }
                             });
