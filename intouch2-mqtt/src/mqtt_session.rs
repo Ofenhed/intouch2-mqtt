@@ -178,7 +178,7 @@ impl Session {
         let encoded_len = encode_slice(&packet, self.buffer.as_mut())?;
         self.stream.write(&self.buffer[..encoded_len]).await?;
         loop {
-            match &self.tick().await?.packet {
+            match &self.recv().await?.packet {
                 Packet::Suback(Suback { pid, return_codes }) if pid == &subscribe_pid => {
                     let failed: Box<_> = topics
                         .into_iter()
@@ -202,7 +202,12 @@ impl Session {
         }
     }
 
-    pub async fn tick(&mut self) -> Result<Arc<MqttPacket>, MqttError> {
+    pub async fn tick(&mut self) -> Result<(), MqttError> {
+        _ = self.recv().await?;
+        Ok(())
+    }
+
+    pub async fn recv(&mut self) -> Result<Arc<MqttPacket>, MqttError> {
         loop {
             select! {
                 read = self.stream.read(self.buffer.as_mut()) => {
