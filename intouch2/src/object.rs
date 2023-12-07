@@ -108,12 +108,40 @@ impl ToStatic for StatusChange<'_> {
     }
 }
 
+impl ToStatic for ReminderInfo {
+    type Static = ReminderInfo;
+
+    fn to_static(&self) -> Self::Static {
+        self.clone()
+    }
+}
+
 pub trait ActualType {
     type Type;
 }
 
 impl<'a> ActualType for &'a [u8] {
     type Type = Cow<'a, [u8]>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, strum::FromRepr)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[repr(u8)]
+pub enum ReminderIndex {
+    Invalid = 0,
+    RinseFilter = 1,
+    CleanFilter = 2,
+    ChangeWater = 3,
+    CheckSpa = 4,
+    ChangeOzonator = 5,
+    ChangeVisionCartridge = 6,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct ReminderInfo {
+    pub index: ReminderIndex,
+    pub data: u16,
 }
 
 pub struct StatusChangePlaceholder;
@@ -124,6 +152,10 @@ impl<'a, const LENGTH: usize> ActualType for &'a [u8; LENGTH] {
 
 impl<'a> ActualType for &'a [StatusChangePlaceholder] {
     type Type = Cow<'a, [StatusChange<'a>]>;
+}
+
+impl<'a> ActualType for &'a [ReminderInfo] {
+    type Type = Cow<'a, [ReminderInfo]>;
 }
 
 macro_rules! actually_self {
@@ -421,7 +453,7 @@ macro_rules! gen_packages {
         Ok((input, parsed.into()))
       }
       pub fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        $crate::gen_packages!{ PARSER_CONTENT input $($const)* $($arg)* }
+        $crate::gen_packages!( PARSER_CONTENT $($const)* $($arg)* )(input)
       }
       pub fn compose(&self) -> std::borrow::Cow<[u8]> {
           match self {
@@ -441,8 +473,29 @@ macro_rules! gen_packages {
         }
     }
   };
-  (PARSER_CONTENT $input:ident $($type:ident)*) => {
-    nom::branch::alt(($(Self :: parse_inner :: <$type>),*))($input)
+  (PARSER_CONTENT $type1:ident $type2:ident $type3:ident $type4:ident $type5:ident $type6:ident $type7:ident $type8:ident $type9:ident $type10:ident $type11:ident $type12:ident $type13:ident $type14:ident $type15:ident $type16:ident $($type:ident)+) => {
+    nom::branch::alt((
+        Self :: parse_inner :: <$type1>,
+        Self :: parse_inner :: <$type2>,
+        Self :: parse_inner :: <$type3>,
+        Self :: parse_inner :: <$type4>,
+        Self :: parse_inner :: <$type5>,
+        Self :: parse_inner :: <$type6>,
+        Self :: parse_inner :: <$type7>,
+        Self :: parse_inner :: <$type8>,
+        Self :: parse_inner :: <$type9>,
+        Self :: parse_inner :: <$type10>,
+        Self :: parse_inner :: <$type11>,
+        Self :: parse_inner :: <$type12>,
+        Self :: parse_inner :: <$type13>,
+        Self :: parse_inner :: <$type14>,
+        Self :: parse_inner :: <$type15>,
+        Self :: parse_inner :: <$type16>,
+        $crate::gen_packages!{PARSER_CONTENT $($type)+}
+    ))
+  };
+  (PARSER_CONTENT $($type:ident)*) => {
+    nom::branch::alt(($(Self :: parse_inner :: <$type>),*))
   };
   (pub enum $parse:ident { $($rest:tt)* }) => {
     $crate::gen_packages!{ WITH_TYPES_LIST $parse [] [] => $($rest)* }
@@ -520,6 +573,14 @@ pub mod package_data {
         RequestWatercare {
             b"REQWC": Tag,
             remainder: u8,
+        },
+        RequestReminders {
+            b"REQRM": Tag,
+            seq: u8,
+        },
+        RemindersRequest {
+            b"RMREQ": Tag,
+            reminders: &[ReminderInfo],
         },
         WatercareRequest(b"WCREQ": Tailing),
         Unknown(b"": Tailing),

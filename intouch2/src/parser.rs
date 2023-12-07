@@ -181,6 +181,32 @@ impl<'a> DatasContent<'a> for StatusChange<'a> {
     }
 }
 
+impl<'a> DatasContent<'a> for ReminderInfo {
+    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
+        let (new_input, index) = u8::parse(input)?;
+        let (input, index) = (
+            new_input,
+            ReminderIndex::from_repr(index).ok_or_else(|| {
+                nom::Err::Failure(nom::error::make_error(
+                    new_input,
+                    nom::error::ErrorKind::OneOf,
+                ))
+            })?,
+        );
+        let (input, data) = DatasContent::parse(input)?;
+        let (input, _) = nom::bytes::complete::tag(b"\x01")(input)?;
+        Ok((input, Self { index, data }))
+    }
+
+    fn compose(&self) -> Cow<'a, [u8]> {
+        Cow::Owned(
+            [&[self.index as u8], self.data.to_be_bytes().as_ref(), b"1"][..]
+                .concat()
+                .into(),
+        )
+    }
+}
+
 impl<'a, T: DatasContent<'a> + Clone> DatasContent<'a> for Cow<'a, [T]>
 where
     [T]: ToOwned,
