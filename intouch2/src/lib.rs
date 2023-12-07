@@ -6,6 +6,8 @@ pub mod composer;
 pub mod datas;
 pub mod object;
 pub mod parser;
+mod object_macro;
+mod object_traits;
 mod to_static;
 pub use to_static::*;
 
