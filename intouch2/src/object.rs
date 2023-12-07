@@ -177,49 +177,32 @@ actually_self!(u8, u16);
 
 #[macro_export]
 macro_rules! gen_packages {
-  (FIND_STRUCT_LIFETIMES $field:literal : Tag $(,$($rest:tt)*)?) => {
-    $crate::gen_packages!{ FIND_STRUCT_LIFETIMES $($($rest)*)? }
-  };
-  (FIND_STRUCT_LIFETIMES $field:literal : &$type:ty $(,$($rest:tt)*)?) => {
-    'a
-  };
-  (FIND_STRUCT_LIFETIMES $field:literal : $type:ty $(,$($rest:tt)*)?) => {
-    $crate::gen_packages!{ FIND_STRUCT_LIFETIMES $($($rest)*)? }
-  };
-  (FIND_STRUCT_LIFETIMES ) => {};
-  (FIND_STRUCT_ENUM_LIFETIME $($rest:tt)+) => {
-    $crate::gen_packages!{ FIND_STRUCT_ENUM_LIFETIME => $crate::gen_packages!{ FIND_STRUCT_LIFETIMES $rest }}
-  };
-  (STRUCT_LIFETIME_TAG => 'static) => {};
-  (STRUCT_LIFETIME_TAG => $l:lifetime) => {
-    <$l>
-  };
-
+  // Ignore tags when building struct
   (BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:literal : Tag $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $($struct_lifetime)? $struct { $($current)* } => $($($rest)*)? }
   };
-  // Fixed size field pointer
+
+  // Add struct pointer member (and add lifetime if not already added)
   (BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : &$field_type:ty $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum 'a $(#[$meta:meta])* $struct { $($current)* pub $field: <&'a $field_type as $crate::object::ActualType>::Type, } => $($($rest)*)? }
   };
+
+  // Add non-pointer struct member
   (BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : $field_type:ty $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $($struct_lifetime)? $(#[$meta:meta])* $struct { $($current)* pub $field: <$field_type as $crate::object::ActualType>::Type, } => $($($rest)*)? }
   };
-  (BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : [$arr_type:ty $(; $len:expr)?] $(,$($rest:tt)*)?) => {
-      compile_error!{"Type {} is not supported", $arr_type}
-  };
-  (DERIVE_CLONE_FOR_STATIC $struct_lifetime:lifetime) => {
-    $enum_name <$struct_lifetime>
-  };
-  (DERIVE_CLONE_FOR_STATIC) => {
-    #[derive(Clone)]
-  };
+
+  // Completed struct with lifetime
   (BUILD_STRUCT_ARGS $enum:ident $struct_lifetime:lifetime $(#[$meta:meta])* $struct:ident { $($current:tt)* } => ) => {
       $crate::gen_packages!{ FINISH_BUILD_STRUCT_ARGS $enum $struct_lifetime $(#[$meta])* $struct { $($current)* } }
   };
+
+  // Complete struct which does not have a lifetime
   (BUILD_STRUCT_ARGS $enum:ident $(#[$meta:meta])* $struct:ident { $($current:tt)* } => ) => {
       $crate::gen_packages!{ FINISH_BUILD_STRUCT_ARGS $enum $struct $(#[$meta])* { $($current)* } }
   };
+
+  // Finalize the result of BUILD_STRUCT_ARGS
   (FINISH_BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* }) => {
       #[derive(Debug, PartialEq, Eq, Clone)]
       $(#[$meta])*
@@ -229,6 +212,7 @@ macro_rules! gen_packages {
       }
   };
 
+  // Add tag to parser and composer
   (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:literal : Tag $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_IMPLS
           $($li)? $struct $tag
@@ -239,6 +223,8 @@ macro_rules! gen_packages {
           => $($($rest)*)?
       }
   };
+
+  // Add a pointer field to the parser and composer
   (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : & $field_type:ty $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_IMPLS
           'a $struct $tag
@@ -249,6 +235,8 @@ macro_rules! gen_packages {
           => $($($rest)*)?
       }
   };
+
+  // Add a non-pointer member to the parser and composer
   (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : $field_type:ty $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_IMPLS
           $($li)? $struct $tag
@@ -259,23 +247,18 @@ macro_rules! gen_packages {
           => $($($rest)*)?
       }
   };
-  (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : [u8], $($rest:tt)+) => {
-    compile_error!{ "If you want arbitraty length elements that's not last, take that up with nom, or build it yourself!" }
-  };
-  (DATAS_CONTENT_LIFETIME) => {
-    $crate :: object :: DatasContent< '_ >
-  };
-  (DATAS_CONTENT_LIFETIME $li:lifetime) => {
-    $crate :: object :: DatasContent<$li>
-  };
+
+  // Struct with lifetime created, generate implementations for type with lifetime
   (BUILD_STRUCT_IMPLS $struct_life:lifetime $struct:ident $tag:literal [$($field:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => ) => {
     $crate::gen_packages!{ GENERATE_STRUCT_IMPLS { SAME $struct_life } $struct $tag [$($field)*] [ $($parser)* ] [$($composer)*] { $($saved)* } }
   };
-  // Above, but without lifetime
+  // Struct without lifetime created, generate implementations for static type
   (BUILD_STRUCT_IMPLS $struct:ident $tag:literal [$($field:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => ) => {
     $crate::gen_packages!{ GENERATE_STRUCT_IMPLS { STATIC 'a } $struct $tag [$($field)*] [ $($parser)* ] [ $($composer)* ] { $($saved)* } }
   };
-  (GENERATE_STRUCT_TO_STATIC $enum:ident $struct:ident $struct_life:lifetime [ $($($field:ident)+)? ]) => {
+
+  // Enumerate to_static for all struct members for structs with a lifetime
+  (ENUMERATE_STRUCT_TO_STATIC $enum:ident $struct:ident $struct_life:lifetime [ $($($field:ident)+)? ]) => {
       impl<$struct_life> $crate::ToStatic for $struct<$struct_life> {
           type Static = $struct<'static>;
 
@@ -285,33 +268,18 @@ macro_rules! gen_packages {
               })?
           }
       }
-      impl<$struct_life> From<$struct<$struct_life>> for $enum<$struct_life> {
-          fn from(other: $struct<$struct_life>) -> $enum<$struct_life> {
-              $enum::$struct(other)
-          }
-      }
   };
-  (GENERATE_STRUCT_TO_STATIC $enum:ident $struct:ident [ $($field:ident)* ] ) => {
-      impl $crate::ToStatic for $struct {
-          type Static = $struct;
 
-          fn to_static(&self) -> $struct {
-              self.to_owned()
-          }
-      }
-      impl From<&$struct> for $struct {
-          fn from(other: &$struct) -> $struct {
-              other.to_owned()
-          }
-      }
-      impl<'any> From<$struct> for $enum<'any> {
-          fn from(other: $struct) -> $enum<'any> {
-              $enum::$struct(other)
-          }
-      }
-  };
+  // Structs without lifetime can simply be cloned to be made static
+  (ENUMERATE_STRUCT_TO_STATIC $enum:ident $struct:ident [ $($field:ident)* ] ) => {};
+
+  // Throw compile error if both $struct_life and $trait_life has a lifetime
   (ASSERT_HAS_SINGLE_LIFETIME $lt:lifetime) => {};
   (ASSERT_HAS_SINGLE_LIFETIME $($lt:lifetime $($lt2:lifetime)+)? ) => { compile_error!{ "Exactly one lifetime must be set for GENERATE_STRUCT_IMPLS" } };
+
+  // Generate implementations with either anonymous lifetime ($trait_life) or struct lifetime
+  // ($struct_life). This is required, since both the TaggedDatasContent and DatasContent requires
+  // a lifetime.
   (GENERATE_STRUCT_IMPLS
     $( { SAME $struct_life:lifetime } )?
     $( { STATIC $trait_life:lifetime } )?
@@ -355,20 +323,50 @@ macro_rules! gen_packages {
         }
       }
 
-      $crate::gen_packages!{ GENERATE_STRUCT_TO_STATIC $enum $struct $($struct_life)? [ $($field)* ] }
+      // Add trait implementations for structs with lifetime
+      $crate::gen_packages!{ ENUMERATE_STRUCT_TO_STATIC $enum $struct $($struct_life)? [ $($field)* ] }
       $(
-        impl<'a> From<&$struct<$struct_life>> for $struct<'static> {
+        impl<$struct_life> From<&$struct<$struct_life>> for $struct<'static> {
             fn from(other: &$struct<$struct_life>) -> $struct<'static> {
                 $crate::ToStatic::to_static(other)
             }
         }
+        impl<$struct_life> From<$struct<$struct_life>> for $enum<$struct_life> {
+            fn from(other: $struct<$struct_life>) -> $enum<$struct_life> {
+                $enum::$struct(other)
+            }
+        }
+      )?
+
+      // Add trait implementations for structs without lifetime
+      $(
+        impl $crate::ToStatic for $struct {
+            type Static = $struct;
+
+            fn to_static(&self) -> $struct {
+                self.to_owned()
+            }
+        }
+        impl From<&$struct> for $struct {
+            fn from(other: &$struct) -> $struct {
+                other.to_owned()
+            }
+        }
+        impl<$trait_life> From<$struct> for $enum<$trait_life> {
+            fn from(other: $struct) -> $enum<$trait_life> {
+                $enum::$struct(other)
+            }
+        }
       )?
   };
+
+  // Entrypoint for generating a struct member
   (WITH_TYPES_LIST $($struct_lifetime:lifetime)? $enum:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(#[$meta:meta])* $struct:ident { $tag:literal : Tag, $($args:tt)* } $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $struct {} => $($args)* }
       $crate::gen_packages!{ BUILD_STRUCT_IMPLS $struct $tag [] [] [] { $enum [$($const)*] [$($($life)? $arg)*] $($($rest)*)? } => $tag: Tag, $($args)* }
   };
 
+  // Implement a simple package, only holding a tag and an array with the rest of the data
   (WITH_TYPES_LIST $enum:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(#[$meta:meta])* $tailing:ident ( $verb:literal : Tailing ) $(,$($rest:tt)*)?) => {
     #[derive(Debug, PartialEq, Eq, Clone)]
     $(#[$meta])*
@@ -414,6 +412,8 @@ macro_rules! gen_packages {
     }
     $crate::gen_packages!{ WITH_TYPES_LIST $enum [$($const)*] [$($($life)? $arg)* 'a $tailing] => $($($rest)*)? }
   };
+
+  // Implement simple package, only holding a single tag
   (WITH_TYPES_LIST $enum:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(#[$meta:meta])* $simple:ident ( $verb:literal : Simple ) $(,$($rest:tt)*)?) => {
     #[derive(Default)]
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -440,6 +440,8 @@ macro_rules! gen_packages {
     }
     $crate::gen_packages!{ WITH_TYPES_LIST $enum [$($const)* $simple] [$($($life)? $arg)*] => $($($rest)*)? }
   };
+
+  // All members added, generate enum
   (WITH_TYPES_LIST $enum_name:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(,)?) => {
     #[derive(Debug, PartialEq, Eq, Clone)]
     #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
@@ -473,7 +475,10 @@ macro_rules! gen_packages {
         }
     }
   };
-  (PARSER_CONTENT $type1:ident $type2:ident $type3:ident $type4:ident $type5:ident $type6:ident $type7:ident $type8:ident $type9:ident $type10:ident $type11:ident $type12:ident $type13:ident $type14:ident $type15:ident $type16:ident $($type:ident)+) => {
+
+  // Generate nom parser. Nom has a limit of 21 parsers, so if there are more, then split the
+  // parser into multiple levels.
+  (PARSER_CONTENT $type1:ident $type2:ident $type3:ident $type4:ident $type5:ident $type6:ident $type7:ident $type8:ident $type9:ident $type10:ident $type11:ident $type12:ident $type13:ident $type14:ident $type15:ident $type16:ident $type17:ident $type18:ident $type19:ident $type20:ident $($type:ident)+) => {
     nom::branch::alt((
         Self :: parse_inner :: <$type1>,
         Self :: parse_inner :: <$type2>,
@@ -491,12 +496,18 @@ macro_rules! gen_packages {
         Self :: parse_inner :: <$type14>,
         Self :: parse_inner :: <$type15>,
         Self :: parse_inner :: <$type16>,
+        Self :: parse_inner :: <$type17>,
+        Self :: parse_inner :: <$type18>,
+        Self :: parse_inner :: <$type19>,
+        Self :: parse_inner :: <$type20>,
         $crate::gen_packages!{PARSER_CONTENT $($type)+}
     ))
   };
   (PARSER_CONTENT $($type:ident)*) => {
     nom::branch::alt(($(Self :: parse_inner :: <$type>),*))
   };
+
+  // Entrypoint
   (pub enum $parse:ident { $($rest:tt)* }) => {
     $crate::gen_packages!{ WITH_TYPES_LIST $parse [] [] => $($rest)* }
   };
