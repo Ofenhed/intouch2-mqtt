@@ -255,8 +255,8 @@ impl SpaConnection {
             let mut listener = self.pipe.subscribe();
             jobs.spawn(async move {
                 let mut pinger = timeout(Duration::from_secs(1), pinger.lock()).await.map_err(|_| SpaError::Deadlock("pinger"))?;
+                let mut unanswered_pings = 0;
                 loop {
-                    let mut unanswered_pings = 0;
                     select! {
                         _ = pinger.tick() => {
                             tx.send(NetworkPackage::Addressed { src: Some((*src).into()), dst: Some((*dst).into()), data: package_data::Ping.into() }.to_static()).await?;
@@ -267,7 +267,7 @@ impl SpaConnection {
                         }
                         new_data = listener.recv() => {
                             if let NetworkPackage::Addressed { data: NetworkPackageData::Pong, .. } = new_data? {
-
+                                unanswered_pings = 0;
                             }
                         }
                     }
