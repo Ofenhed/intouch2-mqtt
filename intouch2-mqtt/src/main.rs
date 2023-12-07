@@ -362,9 +362,6 @@ async fn main() -> anyhow::Result<()> {
     } else {
         None
     };
-    if let Some(mqtt) = &mqtt {
-        mqtt.notify_online().await?;
-    }
     match (mqtt, &spa, &args.memory_changes_mqtt_topic) {
         (Some(mut mqtt), Some(spa), memory_change_topic) => {
             if let Some(memory_change_topic) = memory_change_topic {
@@ -440,6 +437,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             });
             join_set.spawn(async move {
+                mqtt.notify_online().await?;
                 loop {
                     mqtt.tick().await?;
                 }
