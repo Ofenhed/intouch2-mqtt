@@ -1,5 +1,5 @@
-use std::{ops::Deref, borrow::Cow};
 use disjoint_impls::disjoint_impls;
+use std::{borrow::Cow, ops::Deref};
 
 pub mod dispatch {
     pub trait DatasType {
@@ -82,4 +82,3 @@ disjoint_impls! {
     const VERB: &'static [u8] = A::VERB;
   }
 }
-

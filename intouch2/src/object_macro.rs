@@ -335,4 +335,3 @@ macro_rules! gen_packages {
     $crate::gen_packages!{ WITH_TYPES_LIST $parse [] [] => $($rest)* }
   };
 }
-
