@@ -419,18 +419,17 @@ impl Mapping {
                                 loop {
                                     let reported_value = data_subscription.borrow_and_update();
                                     if let Some(reported_value) = reported_value {
-                                        if reported_value.is_null() {
-                                            continue;
+                                        if !reported_value.is_null() {
+                                            let payload = serde_json::to_vec(&reported_value)?;
+                                            let package = Packet::Publish(Publish {
+                                                dup: false,
+                                                qospid: QosPid::AtMostOnce,
+                                                retain: false,
+                                                topic_name: &topic,
+                                                payload: &payload,
+                                            });
+                                            sender.send(&package).await?;
                                         }
-                                        let payload = serde_json::to_vec(&reported_value)?;
-                                        let package = Packet::Publish(Publish {
-                                            dup: false,
-                                            qospid: QosPid::AtMostOnce,
-                                            retain: false,
-                                            topic_name: &topic,
-                                            payload: &payload,
-                                        });
-                                        sender.send(&package).await?;
                                     }
                                     data_subscription.changed().await?;
                                 }
