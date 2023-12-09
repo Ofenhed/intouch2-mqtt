@@ -1,8 +1,11 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
 use serde::Deserialize;
-use tokio::{sync::RwLock, task::JoinSet};
+use tokio::{
+    sync::{mpsc, watch, RwLock},
+    task::JoinSet,
+};
 
 use crate::{
     home_assistant,
@@ -66,6 +69,10 @@ pub enum MappingError {
     BroadcastRecv(#[from] tokio::sync::broadcast::error::RecvError),
     #[error("Runtime error: {0}")]
     Runtime(#[from] tokio::task::JoinError),
+    #[error("Data channel failed: {0}")]
+    WatchChanged(#[from] watch::error::RecvError),
+    #[error("Data channel unexpectedly closed: {0}")]
+    ChannelClosed(&'static str),
 }
 
 pub struct Mapping {
@@ -75,8 +82,10 @@ pub struct Mapping {
 
 #[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
-pub enum SpecialMode {
+pub enum SpecialMode<T> {
     WatercareMode,
+    #[serde(untagged)]
+    Multiple(Box<[T]>),
 }
 
 #[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
@@ -85,7 +94,176 @@ pub enum MappingType {
     U8 { u8_addr: u16 },
     U16 { u16_addr: u16 },
     Array { addr: u16, len: u16 },
-    Special(SpecialMode),
+    Special(SpecialMode<MappingType>),
+}
+
+pub struct WatchMap<W, I, T> {
+    watch: W,
+    map: Box<dyn FnMut(&I) -> T + Send + 'static>,
+    value: Option<T>,
+}
+
+pub trait GenericWatchMap<T>: Send {
+    fn changed<'a>(
+        &'a mut self,
+    ) -> Pin<Box<dyn Future<Output = Result<(), MappingError>> + 'a + Send>>;
+
+    fn borrow_and_update(&mut self) -> Option<&T>;
+}
+
+impl<I: Sync + Send + 'static, T: Send> GenericWatchMap<T> for WatchMap<watch::Receiver<I>, I, T> {
+    fn changed<'a>(
+        &'a mut self,
+    ) -> Pin<Box<dyn Future<Output = Result<(), MappingError>> + 'a + Send>> {
+        Box::pin(async move { Ok(self.watch.changed().await?) })
+    }
+
+    fn borrow_and_update(&mut self) -> Option<&T> {
+        self.value = Some((self.map)(&self.watch.borrow_and_update()));
+        self.value.as_ref()
+    }
+}
+
+impl GenericWatchMap<serde_json::Value> for WatchMap<mpsc::Receiver<()>, (), serde_json::Value> {
+    fn changed<'a>(
+        &'a mut self,
+    ) -> Pin<Box<dyn Future<Output = Result<(), MappingError>> + 'a + Send>> {
+        Box::pin(async move {
+            match self.watch.recv().await {
+                Some(()) => {
+                    while self.watch.try_recv().is_ok() {}
+                    self.value = None;
+                    Ok(())
+                }
+                None => Err(MappingError::ChannelClosed("WatchMap<mpsc::Receiver>")).into(),
+            }
+        })
+    }
+
+    fn borrow_and_update(&mut self) -> Option<&serde_json::Value> {
+        if self.value.is_none() {
+            self.value = Some((self.map)(&()));
+        }
+        self.value.as_ref()
+    }
+}
+
+impl<W, I, T> WatchMap<W, I, T> {
+    pub fn new<F: 'static + Send + FnMut(&I) -> T>(watch: W, map: F) -> Self {
+        Self {
+            watch,
+            map: Box::new(map),
+            value: None,
+        }
+    }
+}
+
+impl MappingType {
+    pub fn subscribe<'a, T: Send + 'static>(
+        &'a self,
+        spa: &'a SpaConnection,
+        jobs: &'a mut JoinSet<Result<T, MappingError>>,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Box<dyn GenericWatchMap<serde_json::Value>>, MappingError>>
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            fn to_return<T: GenericWatchMap<serde_json::Value> + 'static>(
+                x: T,
+            ) -> Box<dyn GenericWatchMap<serde_json::Value>> {
+                Box::new(x)
+            }
+            match self {
+                MappingType::Special(SpecialMode::Multiple(children)) => {
+                    let (tx, rx) = mpsc::channel(children.len());
+                    let mut subscriptions = Vec::with_capacity(children.len());
+                    for child in children.iter() {
+                        subscriptions.push(child.subscribe(spa, jobs).await?);
+                    }
+                    for sub in children.to_owned().into_iter() {
+                        let mut subscriber = sub.subscribe(spa, jobs).await?;
+                        let tx = tx.clone();
+                        jobs.spawn(async move {
+                            loop {
+                                subscriber.changed().await?;
+                                _ = tx.send(()).await;
+                            }
+                        });
+                    }
+                    let map = WatchMap::new(rx, move |_: &()| {
+                        if let Some(result) = subscriptions
+                            .iter_mut()
+                            .map(|x| x.borrow_and_update().map(|x| x.to_owned()))
+                            .collect()
+                        {
+                            serde_json::Value::Array(result)
+                        } else {
+                            serde_json::Value::Null
+                        }
+                    });
+                    Ok(to_return(map))
+                }
+                MappingType::Special(SpecialMode::WatercareMode) => {
+                    let subscribe = spa.subscribe_watercare_mode().await;
+                    let map = WatchMap::new(subscribe, |x: &Option<u8>| {
+                        x.map(|valid_data| serde_json::Value::Number(valid_data.into()))
+                            .unwrap_or(serde_json::Value::Null)
+                    });
+                    Ok(to_return(map))
+                }
+                value @ MappingType::U8 { .. } => {
+                    let subscribe = spa.subscribe(value.range().expect("U8 has a range")).await;
+                    let map = WatchMap::new(subscribe, |x: &Option<Box<[u8]>>| {
+                        x.as_ref()
+                            .map(|valid_data| {
+                                let array: &[u8; 1] = valid_data
+                                    .as_ref()
+                                    .try_into()
+                                    .expect("This value will always be 1 byte");
+                                serde_json::Value::Number(array[0].into())
+                            })
+                            .unwrap_or(serde_json::Value::Null)
+                    });
+                    Ok(to_return(map))
+                }
+                value @ MappingType::U16 { .. } => {
+                    let subscribe = spa.subscribe(value.range().expect("U16 has a range")).await;
+                    let map = WatchMap::new(subscribe, |x: &Option<Box<[u8]>>| {
+                        x.as_ref()
+                            .map(|valid_data| {
+                                let array: &[u8; 2] = valid_data
+                                    .as_ref()
+                                    .try_into()
+                                    .expect("This value will always be 2 bytes");
+                                serde_json::Value::Number(u16::from_be_bytes(*array).into())
+                            })
+                            .unwrap_or(serde_json::Value::Null)
+                    });
+                    Ok(to_return(map))
+                }
+                value @ MappingType::Array { .. } => {
+                    let subscribe = spa
+                        .subscribe(value.range().expect("Array has a range"))
+                        .await;
+                    let map = WatchMap::new(subscribe, |x: &Option<Box<[u8]>>| {
+                        x.as_ref()
+                            .map(|valid_data| {
+                                serde_json::Value::Array(
+                                    valid_data
+                                        .iter()
+                                        .map(|element| serde_json::Value::Number((*element).into()))
+                                        .collect(),
+                                )
+                            })
+                            .unwrap_or(serde_json::Value::Null)
+                    });
+                    Ok(to_return(map))
+                }
+            }
+        })
+    }
 }
 
 #[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
@@ -95,7 +273,7 @@ pub enum CommandMappingType {
     // U16 { u16_addr: u16 },
     // Array { addr: u16, len: u16 },
     // Key { },
-    Special(SpecialMode),
+    Special(SpecialMode<CommandMappingType>),
 }
 
 #[cfg(test)]
@@ -233,69 +411,13 @@ impl Mapping {
                             let topic = topic.clone();
                             let state = state.clone();
                             let mut sender = mqtt.sender();
-                            let mut data_subscription = if let Some(range) = state.range() {
-                                Some(spa.subscribe(range).await)
-                            } else {
-                                None
-                            };
-                            let mut mode_subscription = if matches!(
-                                state,
-                                MappingType::Special(SpecialMode::WatercareMode)
-                            ) {
-                                Some(spa.subscribe_watercare_mode().await)
-                            } else {
-                                None
-                            };
+                            let mut data_subscription =
+                                state.subscribe(&spa, &mut self.jobs).await?;
                             let mqtt_config_complete = mqtt_waiter.clone();
                             self.jobs.spawn(async move {
                                 mqtt_config_complete.read_owned().await;
                                 loop {
-                                    let reported_value = match (
-                                        &state,
-                                        data_subscription.as_mut().map(|x| x.borrow_and_update()),
-                                        mode_subscription.as_mut().map(|x| x.borrow_and_update()),
-                                    ) {
-                                        (
-                                            MappingType::Special(SpecialMode::WatercareMode),
-                                            None,
-                                            Some(mode),
-                                        ) => mode
-                                            .as_ref()
-                                            .map(|mode| serde_json::Value::Number((*mode).into())),
-                                        (MappingType::U8 { .. }, Some(data), None) => {
-                                            data.as_ref().map(|valid_data| {
-                                                let new_value: &[u8; 1] = valid_data
-                                                    .as_ref()
-                                                    .try_into()
-                                                    .expect("This will always be 1 byte");
-                                                serde_json::Value::Number(new_value[0].into())
-                                            })
-                                        }
-                                        (MappingType::U16 { .. }, Some(data), None) => {
-                                            data.as_ref().map(|valid_data| {
-                                                let new_value: &[u8; 2] = valid_data
-                                                    .as_ref()
-                                                    .try_into()
-                                                    .expect("This will always be 2 bytes");
-                                                serde_json::Value::Number(
-                                                    u16::from_be_bytes(*new_value).into(),
-                                                )
-                                            })
-                                        }
-                                        (MappingType::Array { .. }, Some(data), None) => {
-                                            data.as_ref().map(|valid_data| {
-                                                serde_json::Value::Array(
-                                                    valid_data
-                                                        .iter()
-                                                        .map(|x| {
-                                                            serde_json::Value::Number((*x).into())
-                                                        })
-                                                        .collect(),
-                                                )
-                                            })
-                                        }
-                                        (..) => unreachable!("All valid modes handled"),
-                                    };
+                                    let reported_value = data_subscription.borrow_and_update();
                                     if let Some(reported_value) = reported_value {
                                         let payload = serde_json::to_vec(&reported_value)?;
                                         let package = Packet::Publish(Publish {
@@ -307,13 +429,7 @@ impl Mapping {
                                         });
                                         sender.send(&package).await?;
                                     }
-                                    if let Some(subscription) = &mut data_subscription {
-                                        subscription.changed().await.unwrap();
-                                    } else if let Some(subscription) = &mut mode_subscription {
-                                        subscription.changed().await.unwrap();
-                                    } else {
-                                        unreachable!("Only subscriptions are handled here")
-                                    }
+                                    data_subscription.changed().await?;
                                 }
                             });
                         }

@@ -6,7 +6,7 @@ pub use crate::object_traits::*;
 
 pub use package_data::NetworkPackageData;
 
-use crate::{ToStatic, static_cow};
+use crate::{static_cow, ToStatic};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]

@@ -5,9 +5,9 @@ use rand::*;
 pub mod composer;
 pub mod datas;
 pub mod object;
-pub mod parser;
 mod object_macro;
 mod object_traits;
+pub mod parser;
 mod to_static;
 pub use to_static::*;
 
