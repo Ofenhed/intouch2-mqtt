@@ -66,6 +66,14 @@ pub struct ReminderInfo {
     pub valid: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, strum::FromRepr)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[repr(u8)]
+pub enum WatercareType {
+    Economy = 1,
+    FilterCycle = 2,
+}
+
 pub struct StatusChangePlaceholder;
 
 impl<'a, const LENGTH: usize> ActualType for &'a [u8; LENGTH] {
@@ -95,7 +103,7 @@ macro_rules! actually_self {
     };
     () => {};
 }
-actually_self!(u8, u16);
+actually_self!(u8, u16, WatercareType);
 
 pub mod package_data {
     use super::*;
@@ -180,11 +188,11 @@ pub mod package_data {
             b"REQWC": Tag,
             remainder: u8,
         },
-        ModifyWatercareEconomy {
+        ModifyWatercare {
             b"MDFWC": Tag,
             seq: u8,
             mode: u8,
-            b"\x01": Tag,
+            watercare_type: WatercareType,
             rule_index: u8,
             unknown: &[u8; 2],
             start_hour: u8,
@@ -192,17 +200,28 @@ pub mod package_data {
             end_hour: u8,
             end_minutes: u8,
         },
-        ModifyWatercareFilterCycle {
-            b"MDFWC": Tag,
+        DeleteWatercare {
+            b"DELWC": Tag,
             seq: u8,
             mode: u8,
-            b"\x02": Tag,
-            rule_index: u8,
-            unknown: &[u8; 2],
-            start_hour: u8,
-            start_minute: u8,
-            end_hour: u8,
-            end_minutes: u8,
+            uknown: &[u8; 2],
+        },
+        WatercareDeleted {
+            b"WCDEL": Tag,
+            mode: u8,
+            uknown: &[u8; 2],
+        },
+        AddWatercare {
+            b"ADDWC": Tag,
+            seq: u8,
+            mode: u8,
+            watercare_type: WatercareType,
+            data: &[u8],
+        },
+        WatercareAdded {
+            b"WCADD": Tag,
+            mode: u8,
+            watercare_type: WatercareType,
         },
         ModifyWatercareResponse {
             b"WCMDF": Tag,

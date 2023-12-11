@@ -181,6 +181,23 @@ impl<'a> DatasContent<'a> for StatusChange<'a> {
     }
 }
 
+impl<'a> DatasContent<'a> for WatercareType {
+    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
+        let (new_input, parsed) = <u8 as DatasContent>::parse(input)?;
+        let watercare_type = WatercareType::from_repr(parsed).ok_or_else(|| {
+            nom::Err::Failure(nom::error::make_error(
+                new_input,
+                nom::error::ErrorKind::OneOf,
+            ))
+        })?;
+        Ok((new_input, watercare_type))
+    }
+
+    fn compose(&self) -> Cow<'a, [u8]> {
+        Cow::Owned([*self as u8][..].into())
+    }
+}
+
 impl<'a> DatasContent<'a> for ReminderInfo {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         let (new_input, index) = u8::parse(input)?;
