@@ -194,13 +194,28 @@ impl<'a> DatasContent<'a> for ReminderInfo {
             })?,
         );
         let (input, data) = DatasContent::parse(input)?;
-        let (input, _) = nom::bytes::complete::tag(b"\x01")(input)?;
-        Ok((input, Self { index, data }))
+        let (before_valid, _) = nom::bytes::complete::tag(b"\x01")(input)?;
+        let (input, valid) = <u8 as DatasContent>::parse(before_valid)?;
+        let valid = match valid {
+            0 => false,
+            1 => true,
+            _ => {
+                return Err(nom::Err::Failure(nom::error::make_error(
+                    before_valid,
+                    nom::error::ErrorKind::OneOf,
+                )))?
+            }
+        };
+        Ok((input, Self { index, data, valid }))
     }
 
     fn compose(&self) -> Cow<'a, [u8]> {
         Cow::Owned(
-            [&[self.index as u8], self.data.to_be_bytes().as_ref(), b"1"][..]
+            [
+                &[self.index as u8],
+                self.data.to_be_bytes().as_ref(),
+                if self.valid { b"\x01" } else { b"\x00" },
+            ][..]
                 .concat()
                 .into(),
         )

@@ -52,6 +52,7 @@ pub enum ReminderIndex {
 pub struct ReminderInfo {
     pub index: ReminderIndex,
     pub data: u16,
+    pub valid: bool,
 }
 
 pub struct StatusChangePlaceholder;
@@ -91,11 +92,22 @@ pub mod package_data {
       pub enum NetworkPackageData {
         Ping(b"APING": Simple),
         Pong(b"APING\0": Simple),
-        GetVersion( b"AVERS": Simple),
+        GetVersion {
+            b"AVERS": Tag,
+            seq: u8,
+        },
         Packs( b"PACKS": Simple),
         RadioError(b"RFERR": Simple),
         WaterQualityError(b"WCERR": Simple),
-        Version(b"SVERS": Tailing),
+        Version {
+            b"SVERS": Tag,
+            en_build: u16,
+            en_major: u8,
+            en_minor: u8,
+            co_build: u16,
+            co_major: u8,
+            co_minor: u8,
+        },
         PushStatus {
             b"STATP": Tag,
             length: u8,
@@ -166,6 +178,15 @@ pub mod package_data {
             reminders: &[ReminderInfo],
         },
         WatercareRequest(b"WCREQ": Tailing),
+        ChannelCurrent {
+            b"CHCUR": Tag,
+            channel: u8,
+            signal_strength: u8,
+        },
+        GetChannel {
+            b"CURCH": Tag,
+            seq: u8,
+        },
         Unknown(b"": Tailing),
       }
     }

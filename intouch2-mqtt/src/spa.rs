@@ -130,12 +130,16 @@ impl SpaConnection {
         pipe.tx
             .send(NetworkPackage::Hello(Cow::Owned((*src).into())))
             .await?;
+        let seq = AtomicU8::default();
         pipe.tx
             .send(
                 NetworkPackage::Addressed {
                     src: Some((*src).into()),
                     dst: Some((*dst).into()),
-                    data: package_data::GetVersion.into(),
+                    data: package_data::GetVersion {
+                        seq: seq.fetch_add(1, Ordering::Relaxed),
+                    }
+                    .into(),
                 }
                 .to_static(),
             )
@@ -153,7 +157,6 @@ impl SpaConnection {
         ] {
             interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
         }
-        let seq = Default::default();
 
         let spa_object = loop {
             let msg = rx.recv().await?;
@@ -170,7 +173,7 @@ impl SpaConnection {
                     );
                     let (new_commander, commanders) = sync::mpsc::channel(10);
                     break Ok(Self {
-                        seq,
+                        seq: seq.into(),
                         name: name.into(),
                         pipe: pipe.into(),
                         src,
