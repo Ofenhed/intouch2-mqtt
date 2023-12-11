@@ -169,6 +169,10 @@ pub mod package_data {
             b"REQWC": Tag,
             remainder: u8,
         },
+        ModifyWatercare {
+            b"MDFWC": Tag,
+            data: &[u8],
+        },
         RequestReminders {
             b"REQRM": Tag,
             seq: u8,
@@ -191,6 +195,8 @@ pub mod package_data {
             b"CURCH": Tag,
             seq: u8,
         },
+        FilesRequest(b"SFILE?": Simple),
+        Files(b"FILES": Tailing),
         Unknown(b"": Tailing),
       }
     }

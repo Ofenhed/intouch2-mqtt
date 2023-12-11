@@ -1,3 +1,4 @@
+#![recursion_limit = "512"]
 use std::borrow::Cow;
 
 use rand::*;
