@@ -26,6 +26,17 @@ impl ToStatic for StatusChange<'_> {
     }
 }
 
+impl<const N: usize> ToStatic for Cow<'_, [u8; N]> {
+    type Static = Cow<'static, [u8; N]>;
+
+    fn to_static(&self) -> Self::Static {
+        match *self {
+            Cow::Owned(x) => Cow::Owned(x),
+            Cow::Borrowed(x) => Cow::Owned(x.clone()),
+        }
+    }
+}
+
 impl ToStatic for ReminderInfo {
     type Static = ReminderInfo;
 
@@ -169,8 +180,32 @@ pub mod package_data {
             b"REQWC": Tag,
             remainder: u8,
         },
-        ModifyWatercare {
+        ModifyWatercareEconomy {
             b"MDFWC": Tag,
+            seq: u8,
+            mode: u8,
+            b"\x01": Tag,
+            rule_index: u8,
+            unknown: &[u8; 2],
+            start_hour: u8,
+            start_minute: u8,
+            end_hour: u8,
+            end_minutes: u8,
+        },
+        ModifyWatercareFilterCycle {
+            b"MDFWC": Tag,
+            seq: u8,
+            mode: u8,
+            b"\x02": Tag,
+            rule_index: u8,
+            unknown: &[u8; 2],
+            start_hour: u8,
+            start_minute: u8,
+            end_hour: u8,
+            end_minutes: u8,
+        },
+        ModifyWatercareResponse {
+            b"WCMDF": Tag,
             data: &[u8],
         },
         RequestReminders {
