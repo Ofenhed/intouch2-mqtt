@@ -40,6 +40,7 @@ pub struct SpaConnection {
     commanders: Arc<sync::Mutex<sync::mpsc::Receiver<SpaCommand>>>,
     new_commander: Arc<sync::mpsc::Sender<SpaCommand>>,
     seq: Arc<AtomicU8>,
+    version: package_data::Version,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -97,6 +98,10 @@ impl SpaConnection {
                     .subscribe()
             }
         }
+    }
+
+    pub fn version(&self) -> &package_data::Version {
+        &self.version
     }
 
     pub async fn subscribe_watercare_mode(&self) -> sync::watch::Receiver<Option<u8>> {
@@ -164,12 +169,12 @@ impl SpaConnection {
                 NetworkPackage::Addressed {
                     src: _,
                     dst: _,
-                    data: NetworkPackageData::Version(x),
+                    data: NetworkPackageData::Version(version),
                 } => {
                     println!(
                         "Connected to {}, got version {:?}",
                         String::from_utf8_lossy(&name),
-                        x
+                        version
                     );
                     let (new_commander, commanders) = sync::mpsc::channel(10);
                     break Ok(Self {
@@ -178,6 +183,7 @@ impl SpaConnection {
                         pipe: pipe.into(),
                         src,
                         dst,
+                        version,
                         new_commander: new_commander.into(),
                         state_valid: Arc::new(false.into()),
                         commanders: Mutex::new(commanders).into(),

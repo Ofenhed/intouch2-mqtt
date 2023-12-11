@@ -4,6 +4,10 @@ use std::{collections::HashMap, sync::Arc};
 pub struct ConfigureDevice {
     pub identifiers: Box<[Arc<str>]>,
     pub name: Arc<str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sw_version: Option<Arc<str>>,
+    #[serde(flatten)]
+    pub extra_args: HashMap<&'static str, serde_json::Value>,
 }
 
 #[derive(serde::Serialize)]

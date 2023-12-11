@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::Parser;
-use intouch2::object::NetworkPackageData;
+use intouch2::object::{package_data, NetworkPackageData};
 use intouch2_mqtt::{
     home_assistant,
     mapping::{self, Mapping},
@@ -355,7 +355,9 @@ async fn main() -> anyhow::Result<()> {
         let Some(reply) = join_set.join_next().await else {
             unreachable!("The function above will return")
         };
-        let JoinResult::SpaConnected(spa) = reply?? else {
+        #[allow(irrefutable_let_patterns)] // For clarity
+        let JoinResult::SpaConnected(spa) = reply??
+        else {
             unreachable!("SpaConnected is the only possible reply from threads spawned before here")
         };
         Some(spa)
@@ -422,9 +424,24 @@ async fn main() -> anyhow::Result<()> {
                 });
             }
             let spa_name = String::from_utf8_lossy(spa.name());
+            let spa_version = {
+                let package_data::Version {
+                    en_build,
+                    en_major,
+                    en_minor,
+                    co_build,
+                    co_major,
+                    co_minor,
+                } = spa.version();
+                format!(
+                    "EN: {en_build} v{en_major}.{en_minor}, CO: {co_build} v{co_major}.{co_minor}"
+                )
+            };
             let mut mapping = Mapping::new(home_assistant::ConfigureDevice {
                 identifiers: Box::from([args.spa_id.clone()]),
                 name: spa_name.into(),
+                sw_version: Some(spa_version.into()),
+                extra_args: Default::default(),
             })?;
             for entity in &args.entities {
                 mapping

@@ -203,7 +203,7 @@ impl PortForwardBuilder {
         let sock_spa = UdpSocket::bind(target_bind_addr).await?;
         sock_spa.connect(self.target_addr).await?;
 
-        let mut spa_hello = {
+        let spa_hello = {
             let mut tries: u8 = 5;
             let mut buf = Box::new([0; 512]);
             'retry: loop {
@@ -259,9 +259,9 @@ impl PortForwardBuilder {
 impl PortForward {
     pub async fn run(mut self) -> Result<(), PortForwardError> {
         let mut spa_hello = SpaHello::new(&self.spa_hello)?;
-        let mut hello_response = Arc::new(RwLock::new(compose_network_data(
-            &NetworkPackage::Hello(Cow::Borrowed(&spa_hello.id)),
-        )));
+        let hello_response = Arc::new(RwLock::new(compose_network_data(&NetworkPackage::Hello(
+            Cow::Borrowed(&spa_hello.id),
+        ))));
 
         #[derive(Debug)]
         enum SocketData {

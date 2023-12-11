@@ -88,6 +88,7 @@ pub struct ForwardMapping<T> {
     addrs: HashMap<Arc<PeerAddrType>, Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>>,
 }
 
+#[allow(dead_code)]
 fn unpack_owned_cell<'a, T>(
     from: Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>,
 ) -> &'a ForwardMappingInfo<T> {
