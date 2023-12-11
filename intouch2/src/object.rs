@@ -218,7 +218,12 @@ pub mod package_data {
             seq: u8,
             mode: u8,
             r#type: WatercareType,
-            data: &[u8],
+            index: u8,
+            unknown: &[u8; 2],
+            start_hour: u8,
+            start_minute: u8,
+            end_hour: u8,
+            end_minutes: u8,
         },
         WatercareAdded {
             b"WCADD": Tag,
