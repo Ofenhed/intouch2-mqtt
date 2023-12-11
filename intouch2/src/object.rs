@@ -177,6 +177,10 @@ pub mod package_data {
             b"RMREQ": Tag,
             reminders: &[ReminderInfo],
         },
+        MalformedRemindersRequest {
+            b"RMREQ": Tag,
+            reminders: &[u8],
+        },
         WatercareRequest(b"WCREQ": Tailing),
         ChannelCurrent {
             b"CHCUR": Tag,
