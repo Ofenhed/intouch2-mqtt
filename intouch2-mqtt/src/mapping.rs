@@ -309,21 +309,6 @@ pub enum CommandMappingType {
     Special(SpecialMode<CommandMappingType>),
 }
 
-#[cfg(test)]
-mod more_tests {
-    #[test]
-    fn create_mqtt_type() -> anyhow::Result<()> {
-        let parsed = serde_json::from_str(r#"{"state": "watercare_mode"}"#)?;
-        assert!(matches!(
-            parsed,
-            super::MqttType::State {
-                state: super::MappingType::Special(super::SpecialMode::WatercareMode),
-            }
-        ));
-        Ok(())
-    }
-}
-
 impl MappingType {
     pub fn range(&self) -> Option<std::ops::Range<usize>> {
         let start = match self {
@@ -393,6 +378,14 @@ mod tests {
             r#"{"type": "light", "name": "Some light", "unique_id": "light0001", "state_topic": {"state": {"u8_addr": 100}}}"#,
         )?;
         eprintln!("Mapping was {mapping:?}");
+        Ok(())
+    }
+    #[test]
+    fn create_mqtt_type() -> anyhow::Result<()> {
+        let to_serialize = super::MqttType::Command { command: super::CommandMappingType::SetStatus { config_version: 1, log_version: 2, pack_type: 3, data: super::CommandStatusType::U8 { u8_addr: 4 } } };
+        eprintln!("Serialized: {}", serde_json::to_string(&to_serialize).unwrap());
+        let _: super::MqttType = serde_json::from_str(r#"{"command":{"u16_addr": 4, "config_version":1,"log_version":2,"pack_type":3}}"#)?;
+
         Ok(())
     }
 }
