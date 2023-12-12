@@ -80,16 +80,16 @@ pub struct Mapping {
     jobs: JoinSet<Result<(), MappingError>>,
 }
 
-#[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
-#[serde(deny_unknown_fields, rename_all = "snake_case")]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SpecialMode<T> {
     WatercareMode,
     #[serde(untagged)]
     Multiple(Box<[T]>),
 }
 
-#[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
-#[serde(deny_unknown_fields, untagged)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(untagged)]
 pub enum MappingType {
     U8 { u8_addr: u16 },
     U16 { u16_addr: u16 },
@@ -266,8 +266,8 @@ impl MappingType {
     }
 }
 
-#[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
-#[serde(deny_unknown_fields, untagged)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(untagged)]
 pub enum CommandStatusType {
     U8 { u8_addr: u16 },
     U16 { u16_addr: u16 },
@@ -296,8 +296,8 @@ impl CommandStatusType {
     }
 }
 
-#[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
-#[serde(deny_unknown_fields, untagged)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(untagged)]
 pub enum CommandMappingType {
     SetStatus {
         config_version: u8,
@@ -328,8 +328,8 @@ impl MappingType {
     }
 }
 
-#[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
-#[serde(deny_unknown_fields, untagged)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(untagged)]
 pub enum MqttType {
     State { state: MappingType },
     Command { command: CommandMappingType },
@@ -383,9 +383,12 @@ mod tests {
     #[test]
     fn create_mqtt_type() -> anyhow::Result<()> {
         let to_serialize = super::MqttType::Command { command: super::CommandMappingType::SetStatus { config_version: 1, log_version: 2, pack_type: 3, data: super::CommandStatusType::U8 { u8_addr: 4 } } };
-        eprintln!("Serialized: {}", serde_json::to_string(&to_serialize).unwrap());
-        let _: super::MqttType = serde_json::from_str(r#"{"command":{"u16_addr": 4, "config_version":1,"log_version":2,"pack_type":3}}"#)?;
-
+        let serialized = serde_json::to_string(&to_serialize)?;
+        eprintln!("Serialized: {serialized}");
+        let reparsed: super::MqttType = serde_json::from_str(&serialized)?;
+        assert_eq!(to_serialize, reparsed);
+        let parsed: super::MqttType = serde_json::from_str(r#"{"command":{"config_version":1,"log_version":2,"pack_type":3,"u16_addr":4}}"#)?;
+        assert!(matches!(parsed, super::MqttType::Command { .. }));
         Ok(())
     }
 }
@@ -464,7 +467,6 @@ impl Mapping {
                         config.args.insert(key.as_ref(), topic.into())
                     }
                     MqttType::Command { command } => {
-                        eprintln!("Got command {command:?}");
                         let topic = next_topic(Topic::Set);
                         mqtt.mqtt_subscribe(vec![SubscribeTopic {
                             topic_path: topic.clone(),
