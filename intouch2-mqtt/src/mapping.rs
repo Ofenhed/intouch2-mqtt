@@ -512,15 +512,15 @@ impl Mapping {
                                             }),
                                         ) if topic_name == &topic => {
                                             let range = data.range();
-                                            let parsed = match data.parse(payload) {
+                                            let payload = match data.parse(payload) {
                                                 Ok(data) => data,
                                                 Err(e) => {
                                                     eprintln!("Invalid data from MQTT: {e}");
                                                     continue;
                                                 }
                                             };
-                                            if range.len() != parsed.len() {
-                                                eprintln!("Data does not match size constraint of {len}: {parsed:?}", len = range.len());
+                                            if range.len() != payload.len() {
+                                                eprintln!("Data does not match size constraint of {len}: {payload:?}", len = range.len());
                                                 continue;
                                             }
                                             spa_sender.send(SpaCommand::SetStatus {
