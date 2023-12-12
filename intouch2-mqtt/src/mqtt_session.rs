@@ -2,6 +2,7 @@ use mqttrs::*;
 use std::{
     net::SocketAddr,
     ops::{Add, Deref},
+    path::Path,
     pin::Pin,
     sync::Arc,
 };
@@ -27,6 +28,7 @@ pub enum MqttAuth<'a> {
 pub struct SessionBuilder<'a> {
     pub discovery_topic: Arc<str>,
     pub availability_topic: Option<Arc<str>>,
+    pub base_topic: Arc<str>,
     pub target: SocketAddr,
     pub auth: MqttAuth<'a>,
     pub keep_alive: u16,
@@ -67,8 +69,9 @@ impl TryFrom<&'_ [u8]> for MqttPacket {
 pub struct Session {
     stream: TcpStream,
     buffer: Box<[u8; 4096]>,
-    discovery_topic: Arc<str>,
+    discovery_topic: Arc<Path>,
     availability_topic: Option<Arc<str>>,
+    base_topic: Arc<Path>,
     pid: Pid,
     send_queue: mpsc::Receiver<Box<[u8]>>,
     send_queue_sender: mpsc::Sender<Box<[u8]>>,
@@ -122,23 +125,27 @@ impl PacketSender {
 }
 
 pub struct TopicGenerator {
-    discovery_topic: Arc<str>,
+    discovery_topic: Arc<Path>,
+    base_topic: Arc<Path>,
 }
 impl TopicGenerator {
     #[inline(always)]
     pub fn topic(&self, r#type: &str, name: &str, topic: Topic) -> String {
-        if matches!(topic, Topic::None) {
-            format!(
-                "{discovery}/{type}/{name}",
-                discovery = self.discovery_topic
-            )
-        } else {
-            let topic: &'static str = topic.into();
-            format!(
-                "{discovery}/{type}/{name}/{topic}",
-                discovery = self.discovery_topic
-            )
+        match topic {
+            Topic::Config => self
+                .discovery_topic
+                .join(r#type)
+                .join(name)
+                .join(<&str as From<_>>::from(topic)),
+            Topic::None => self.base_topic.join(r#type).join(name),
+            topic => self
+                .base_topic
+                .join(r#type)
+                .join(name)
+                .join(<&str as From<_>>::from(topic)),
         }
+        .to_string_lossy()
+        .to_string()
     }
 }
 
@@ -146,6 +153,7 @@ impl Session {
     pub fn topic_generator(&self) -> TopicGenerator {
         TopicGenerator {
             discovery_topic: self.discovery_topic.clone(),
+            base_topic: self.base_topic.clone(),
         }
     }
     #[inline(always)]
@@ -313,7 +321,8 @@ impl SessionBuilder<'_> {
                         stream,
                         buffer,
                         availability_topic: self.availability_topic,
-                        discovery_topic: self.discovery_topic,
+                        base_topic: Arc::from(Path::new(&*self.base_topic)),
+                        discovery_topic: Arc::from(Path::new(&*self.discovery_topic)),
                         pid: Pid::new(),
                         subscribers: tokio::sync::broadcast::Sender::new(10),
                         send_queue,

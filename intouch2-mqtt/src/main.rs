@@ -48,6 +48,10 @@ mod default_values {
         "homeassistant".into()
     }
 
+    pub fn base_topic() -> Arc<str> {
+        "intouch2".into()
+    }
+
     pub fn r#false() -> bool {
         false
     }
@@ -151,17 +155,23 @@ struct Command {
     #[arg(default_value = "homeassistant")]
     mqtt_discovery_topic: Arc<str>,
 
+    #[serde(default = "default_values::base_topic")]
+    #[arg(default_value = "intouch2")]
+    mqtt_base_topic: Arc<str>,
+
+    /// Set this to dump memory changes to the specified MQTT topic as
+    /// "{mqtt_base_topic}/{mqtt_availability_topic}".
     #[arg(long)]
     #[serde(default)]
     mqtt_availability_topic: Option<Arc<str>>,
 
     /// Set this to dump memory changes to the specified MQTT topic as
-    /// "{package_dump_mqtt_topic}/{client_id}".
+    /// "{mqtt_base_topic}/{package_dump_mqtt_topic}/{client_id}".
     #[arg(long)]
     package_dump_mqtt_topic: Option<Arc<str>>,
 
     /// Set this to dump memory changes to the specified MQTT topic as
-    /// "{memory_changes_mqtt_topic}/{changed_address}".
+    /// "{mqtt_base_topic}/{memory_changes_mqtt_topic}/{changed_address}".
     #[arg(long)]
     memory_changes_mqtt_topic: Option<Arc<str>>,
 
@@ -245,9 +255,17 @@ async fn main() -> anyhow::Result<()> {
                 ))?
             }
         };
+        let mqtt_availability = args.mqtt_availability_topic.as_deref().map(|availability| {
+            Arc::from(
+                &*PathBuf::from(&*args.mqtt_base_topic)
+                    .join(&*availability)
+                    .to_string_lossy(),
+            )
+        });
         let session = MqttSession {
+            base_topic: args.mqtt_base_topic.clone(),
             discovery_topic: args.mqtt_discovery_topic.clone(),
-            availability_topic: args.mqtt_availability_topic.clone(),
+            availability_topic: mqtt_availability,
             target: mqtt_addr,
             auth,
             keep_alive: 30,
@@ -291,7 +309,7 @@ async fn main() -> anyhow::Result<()> {
         (_, None) => (),
         (Some(mqtt), Some(dump_topic)) => {
             let mut mqtt_sender = mqtt.sender();
-            let topic = PathBuf::from(dump_topic.as_ref());
+            let topic = PathBuf::from(args.mqtt_base_topic.as_ref()).join(dump_topic.as_ref());
             let mut package_pipe = forward_builder.dump_packages();
             join_set.spawn(async move {
                 let mut recent_packages = VecDeque::with_capacity(10);
@@ -370,7 +388,8 @@ async fn main() -> anyhow::Result<()> {
                 let mut mqtt_sender = mqtt.sender();
                 let len = spa.len().await;
                 let mut spa_data = spa.subscribe(0..len).await;
-                let memory_change_topic = PathBuf::from(memory_change_topic.as_ref());
+                let memory_change_topic =
+                    PathBuf::from(args.mqtt_base_topic.as_ref()).join(memory_change_topic.as_ref());
                 join_set.spawn(async move {
                     let mut previous: Box<[u8]> = loop {
                         {

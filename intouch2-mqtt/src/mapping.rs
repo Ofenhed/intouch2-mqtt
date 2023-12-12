@@ -419,9 +419,9 @@ impl Mapping {
             unique_id,
             mqtt_values,
         } = mapping;
-        let mut next_state_topic = || {
+        let mut next_topic = |topic: Topic| {
             counter += 1;
-            topics.topic(&mqtt_type, &format!("{unique_id}/{counter}"), Topic::State)
+            topics.topic(&mqtt_type, &format!("{unique_id}/{counter}"), topic)
         };
 
         let device = self.device.clone();
@@ -439,7 +439,7 @@ impl Mapping {
             for (key, value) in &mqtt_values {
                 match value {
                     MqttType::State { state } => {
-                        let topic = next_state_topic();
+                        let topic = next_topic(Topic::State);
                         {
                             let topic = topic.clone();
                             let state = state.clone();
@@ -471,7 +471,7 @@ impl Mapping {
                         config.args.insert(key.as_ref(), topic.into())
                     }
                     MqttType::Command { command } => {
-                        let topic = next_state_topic();
+                        let topic = next_topic(Topic::Set);
                         mqtt.mqtt_subscribe(vec![SubscribeTopic {
                             topic_path: topic.clone(),
                             qos: QoS::AtMostOnce,

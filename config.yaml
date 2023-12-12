@@ -1,6 +1,6 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.145"
+version: "0.1.146"
 slug: "intouch2-mqtt"
 init: false
 arch:
@@ -31,6 +31,7 @@ schema:
   mqtt_target: str?
   mqtt_username: str?
   mqtt_password: password?
+  mqtt_base_topic: str
   mqtt_discovery_topic: str?
   mqtt_availability_topic: str?
   entities_json:
