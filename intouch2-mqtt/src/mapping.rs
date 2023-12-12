@@ -268,11 +268,44 @@ impl MappingType {
 
 #[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
 #[serde(deny_unknown_fields, untagged)]
+pub enum CommandStatusType {
+    U8 { u8_addr: u16 },
+    U16 { u16_addr: u16 },
+    Array { addr: u16, len: u16 },
+}
+
+impl CommandStatusType {
+    pub fn parse(&self, payload: &[u8]) -> Result<Box<[u8]>, serde_json::error::Error> {
+        match self {
+            CommandStatusType::U8 { .. } => {
+                Ok(Box::from(&[serde_json::from_slice::<u8>(payload)?][..]))
+            }
+            CommandStatusType::U16 { .. } => Ok(Box::from(
+                serde_json::from_slice::<u16>(payload)?.to_be_bytes(),
+            )),
+            CommandStatusType::Array { .. } => Ok(serde_json::from_slice::<Box<[u8]>>(payload)?),
+        }
+    }
+
+    pub fn range(&self) -> std::ops::Range<u16> {
+        match self {
+            CommandStatusType::U8 { u8_addr } => *u8_addr..u8_addr + 1,
+            CommandStatusType::U16 { u16_addr } => *u16_addr..u16_addr + 2,
+            CommandStatusType::Array { addr, len } => *addr..addr + len,
+        }
+    }
+}
+
+#[derive(serde::Deserialize, Debug, Clone, serde::Serialize)]
+#[serde(deny_unknown_fields, untagged)]
 pub enum CommandMappingType {
-    // U8 { u8_addr: u16 },
-    // U16 { u16_addr: u16 },
-    // Array { addr: u16, len: u16 },
-    // Key { },
+    SetStatus {
+        config_version: u8,
+        log_version: u8,
+        pack_type: u8,
+        #[serde(flatten)]
+        data: CommandStatusType,
+    },
     Special(SpecialMode<CommandMappingType>),
 }
 
@@ -472,6 +505,31 @@ impl Mapping {
                                                 continue;
                                             };
                                             spa_sender.send(SpaCommand::SetWatercare(mode)).await?;
+                                        }
+                                        (
+                                            CommandMappingType::SetStatus { config_version, log_version, pack_type, data },
+                                            Packet::Publish(Publish {
+                                                dup: false,
+                                                topic_name,
+                                                payload,
+                                                ..
+                                            }),
+                                        ) if topic_name == &topic => {
+                                            let range = data.range();
+                                            let parsed = match data.parse(payload) {
+                                                Ok(data) => data,
+                                                Err(e) => {
+                                                    eprintln!("Invalid data from MQTT: {e}");
+                                                    continue;
+                                                }
+                                            };
+                                            if range.len() != parsed.len() {
+                                                eprintln!("Data does not match size constraint of {len}: {parsed:?}", len = range.len());
+                                                continue;
+                                            }
+                                            spa_sender.send(SpaCommand::SetStatus {
+                                                config_version: *config_version, log_version: *log_version, pack_type: *pack_type, pos: range.start, data: (*payload).into(),
+                                            }).await?;
                                         }
                                         _ => (),
                                     };

@@ -77,6 +77,13 @@ impl WithBuffer for SpaConnection {
 
 #[derive(Debug)]
 pub enum SpaCommand {
+    SetStatus {
+        config_version: u8,
+        log_version: u8,
+        pack_type: u8,
+        pos: u16,
+        data: Box<[u8]>,
+    },
     SetWatercare(u8),
 }
 
@@ -309,6 +316,37 @@ impl SpaConnection {
                             )
                             .await?;
                         }
+                        Some(SpaCommand::SetStatus {
+                            config_version,
+                            log_version,
+                            pack_type,
+                            pos,
+                            data,
+                        }) => match data.len().try_into() {
+                            Ok(len) => {
+                                tx.send(
+                                    NetworkPackage::Addressed {
+                                        src: Some((*src).into()),
+                                        dst: Some((*dst).into()),
+                                        data: package_data::SetStatus {
+                                            seq: seq.fetch_add(1, Ordering::Relaxed),
+                                            pack_type,
+                                            len,
+                                            config_version,
+                                            log_version,
+                                            pos,
+                                            data: Cow::Owned(data.into()),
+                                        }
+                                        .into(),
+                                    }
+                                    .to_static(),
+                                )
+                                .await?;
+                            }
+                            Err(e) => {
+                                eprintln!("Length is not 8 bits: {e}");
+                            }
+                        },
                     }
                 }
             });
