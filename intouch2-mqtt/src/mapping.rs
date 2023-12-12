@@ -464,6 +464,7 @@ impl Mapping {
                         config.args.insert(key.as_ref(), topic.into())
                     }
                     MqttType::Command { command } => {
+                        eprintln!("Got command {command:?}");
                         let topic = next_topic(Topic::Set);
                         mqtt.mqtt_subscribe(vec![SubscribeTopic {
                             topic_path: topic.clone(),
