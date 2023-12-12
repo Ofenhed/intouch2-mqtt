@@ -6,13 +6,13 @@ macro_rules! gen_packages {
   };
 
   // Add struct pointer member (and add lifetime if not already added)
-  (BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : &$field_type:ty $(,$($rest:tt)*)?) => {
-      $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum 'a $(#[$meta:meta])* $struct { $($current)* pub $field: <&'a $field_type as $crate::object::ActualType>::Type, } => $($($rest)*)? }
+  (BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $(#[doc = $docs:literal])* $field:ident : &$field_type:ty $(,$($rest:tt)*)?) => {
+      $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum 'a $(#[$meta:meta])* $struct { $($current)* $(#[doc = $docs])* pub $field: <&'a $field_type as $crate::object::ActualType>::Type, } => $($($rest)*)? }
   };
 
   // Add non-pointer struct member
-  (BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $field:ident : $field_type:ty $(,$($rest:tt)*)?) => {
-      $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $($struct_lifetime)? $(#[$meta:meta])* $struct { $($current)* pub $field: <$field_type as $crate::object::ActualType>::Type, } => $($($rest)*)? }
+  (BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* } => $(#[doc = $docs:literal])* $field:ident : $field_type:ty $(,$($rest:tt)*)?) => {
+      $crate::gen_packages!{ BUILD_STRUCT_ARGS $enum $($struct_lifetime)? $(#[$meta:meta])* $struct { $($current)* $(#[doc = $docs])* pub $field: <$field_type as $crate::object::ActualType>::Type, } => $($($rest)*)? }
   };
 
   // Completed struct with lifetime
@@ -36,7 +36,7 @@ macro_rules! gen_packages {
   };
 
   // Add tag to parser and composer
-  (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:literal : Tag $(,$($rest:tt)*)?) => {
+  (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $(#[doc = $docs:literal])* $field:literal : Tag $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_IMPLS
           $($li)? $struct $tag
           [ $($member)* ]
@@ -48,7 +48,7 @@ macro_rules! gen_packages {
   };
 
   // Add a pointer field to the parser and composer
-  (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : & $field_type:ty $(,$($rest:tt)*)?) => {
+  (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $(#[doc = $docs:literal])* $field:ident : & $field_type:ty $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_IMPLS
           'a $struct $tag
           [ $($member)* $field ]
@@ -60,7 +60,7 @@ macro_rules! gen_packages {
   };
 
   // Add a non-pointer member to the parser and composer
-  (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $field:ident : $field_type:ty $(,$($rest:tt)*)?) => {
+  (BUILD_STRUCT_IMPLS $($li:lifetime)? $struct:ident $tag:literal [$($member:ident)*] [ $($parser:tt)* ] [ $($composer:tt)* ] { $($saved:tt)* } => $(#[doc = $docs:literal])* $field:ident : $field_type:ty $(,$($rest:tt)*)?) => {
       $crate::gen_packages!{ BUILD_STRUCT_IMPLS
           $($li)? $struct $tag
           [ $($member)* $field ]

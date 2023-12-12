@@ -382,12 +382,21 @@ mod tests {
     }
     #[test]
     fn create_mqtt_type() -> anyhow::Result<()> {
-        let to_serialize = super::MqttType::Command { command: super::CommandMappingType::SetStatus { config_version: 1, log_version: 2, pack_type: 3, data: super::CommandStatusType::U8 { u8_addr: 4 } } };
+        let to_serialize = super::MqttType::Command {
+            command: super::CommandMappingType::SetStatus {
+                config_version: 1,
+                log_version: 2,
+                pack_type: 3,
+                data: super::CommandStatusType::U8 { u8_addr: 4 },
+            },
+        };
         let serialized = serde_json::to_string(&to_serialize)?;
         eprintln!("Serialized: {serialized}");
         let reparsed: super::MqttType = serde_json::from_str(&serialized)?;
         assert_eq!(to_serialize, reparsed);
-        let parsed: super::MqttType = serde_json::from_str(r#"{"command":{"config_version":1,"log_version":2,"pack_type":3,"u16_addr":4}}"#)?;
+        let parsed: super::MqttType = serde_json::from_str(
+            r#"{"command":{"config_version":1,"log_version":2,"pack_type":3,"u16_addr":4}}"#,
+        )?;
         assert!(matches!(parsed, super::MqttType::Command { .. }));
         Ok(())
     }

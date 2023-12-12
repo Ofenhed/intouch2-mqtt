@@ -322,7 +322,7 @@ impl SpaConnection {
                             pack_type,
                             pos,
                             data,
-                        }) => match data.len().try_into() {
+                        }) => match (data.len() + 5).try_into() {
                             Ok(len) => {
                                 tx.send(
                                     NetworkPackage::Addressed {

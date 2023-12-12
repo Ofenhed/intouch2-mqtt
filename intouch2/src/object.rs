@@ -136,6 +136,8 @@ pub mod package_data {
             b"SPACK": Tag,
             seq: u8,
             pack_type: u8,
+            /// This includes the length of all fields below, meaning it should be `5 +
+            /// data.len()`.
             len: u8,
             b"\x46": Tag,
             config_version: u8,
