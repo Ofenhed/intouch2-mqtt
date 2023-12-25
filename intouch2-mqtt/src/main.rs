@@ -462,7 +462,10 @@ async fn main() -> anyhow::Result<()> {
             };
             if args.verbose {
                 eprintln!("Waiting for complete memory dump");
-                spa.write().await.wait_for_valid_data().await?;
+            }
+            spa.write().await.wait_for_valid_data().await?;
+            if args.verbose {
+                eprintln!("Memory dump received");
             }
             let mut mapping = Mapping::new(home_assistant::ConfigureDevice {
                 identifiers: Box::from([args.spa_id.clone()]),
@@ -476,6 +479,9 @@ async fn main() -> anyhow::Result<()> {
             join_set.spawn(async move {
                 let mut mqtt_subscription = mqtt.subscribe();
                 'send_config: loop {
+                    if args.verbose {
+                        eprintln!("Configuring device mapping");
+                    }
                     for entity in &args.entities {
                         mapping
                             .add_generic(entity.unwrap().clone(), &*spa.read().await, &mut mqtt)
