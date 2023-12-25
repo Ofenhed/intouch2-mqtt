@@ -268,8 +268,8 @@ async fn main() -> anyhow::Result<()> {
             discovery_topic: args.mqtt_discovery_topic.clone(),
             availability_topic: mqtt_availability,
             target: mqtt_addr,
-            publish_retries: 10,
-            publish_timeout: Duration::from_secs(3),
+            publish_retries: 30,
+            publish_timeout: Duration::from_secs(5),
             auth,
             keep_alive: 30,
         };

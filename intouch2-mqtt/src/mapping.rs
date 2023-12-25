@@ -117,7 +117,7 @@ pub trait GenericWatchMap<T>: Send {
         &'a mut self,
     ) -> Pin<Box<dyn Future<Output = Result<(), MappingError>> + 'a + Send>>;
 
-    fn borrow_and_update(&mut self) -> Option<&T>;
+    fn borrow_and_update(&mut self) -> &T;
 }
 
 impl<I: Sync + Send + 'static, T: Send> GenericWatchMap<T> for WatchMap<watch::Receiver<I>, I, T> {
@@ -127,9 +127,9 @@ impl<I: Sync + Send + 'static, T: Send> GenericWatchMap<T> for WatchMap<watch::R
         Box::pin(async move { Ok(self.watch.changed().await?) })
     }
 
-    fn borrow_and_update(&mut self) -> Option<&T> {
+    fn borrow_and_update(&mut self) -> &T {
         self.value = Some((self.map)(&self.watch.borrow_and_update()));
-        self.value.as_ref()
+        self.value.as_ref().expect("Value set to some right above")
     }
 }
 
@@ -149,11 +149,11 @@ impl GenericWatchMap<serde_json::Value> for WatchMap<mpsc::Receiver<()>, (), ser
         })
     }
 
-    fn borrow_and_update(&mut self) -> Option<&serde_json::Value> {
+    fn borrow_and_update(&mut self) -> &serde_json::Value {
         if self.value.is_none() {
             self.value = Some((self.map)(&()));
         }
-        self.value.as_ref()
+        self.value.as_ref().expect("Value set to Some right above")
     }
 }
 
@@ -203,15 +203,12 @@ impl MappingType {
                         });
                     }
                     let map = WatchMap::new(rx, move |_: &()| {
-                        if let Some(result) = subscriptions
-                            .iter_mut()
-                            .map(|x| x.borrow_and_update().map(|x| x.to_owned()))
-                            .collect()
-                        {
-                            serde_json::Value::Array(result)
-                        } else {
-                            serde_json::Value::Null
-                        }
+                        serde_json::Value::Array(
+                            subscriptions
+                                .iter_mut()
+                                .map(|x| x.borrow_and_update().to_owned())
+                                .collect(),
+                        )
                     });
                     Ok(to_return(map))
                 }
@@ -473,19 +470,15 @@ impl Mapping {
                             self.jobs.spawn(async move {
                                 loop {
                                     let reported_value = data_subscription.borrow_and_update();
-                                    if let Some(reported_value) = reported_value {
-                                        if !reported_value.is_null() {
-                                            let payload = serde_json::to_vec(&reported_value)?;
-                                            sender
-                                                .publish(
-                                                    Path::new(&topic),
-                                                    QosPid::AtLeastOnce(sender.next_pid()),
-                                                    payload,
-                                                )
-                                                .await?;
-                                            drop(mem::take(&mut uninitialized));
-                                        }
-                                    }
+                                    let payload = serde_json::to_vec(&reported_value)?;
+                                    sender
+                                        .publish(
+                                            Path::new(&topic),
+                                            QosPid::AtLeastOnce(sender.next_pid()),
+                                            payload,
+                                        )
+                                        .await?;
+                                    drop(mem::take(&mut uninitialized));
                                     data_subscription.changed().await?;
                                 }
                             });
