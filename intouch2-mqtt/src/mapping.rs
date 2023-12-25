@@ -416,8 +416,8 @@ impl Mapping {
             eprintln!("Trying to fetch locks, but queue is empty");
         }
         while let Some(lock) = self.uninitialized.last().map(<Arc<_> as Clone>::clone) {
+            let mut acquire_lock = pin!(lock.lock());
             loop {
-                let mut acquire_lock = pin!(lock.lock());
                 select! {
                     _ = &mut acquire_lock => {
                         self.uninitialized.pop();
