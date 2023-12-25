@@ -377,6 +377,11 @@ impl Session {
                                                     response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
                                                     return Ok(())
                                                 }
+                                                Packet::Pubrec(ack_pid) if ack_pid == pid => {
+                                                    sender.send(&Packet::Pubrel(ack_pid)).await?;
+                                                    response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
+                                                    return Ok(())
+                                                }
                                                 _ => (),
                                             }
                                         }
