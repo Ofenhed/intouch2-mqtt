@@ -410,23 +410,13 @@ impl Mapping {
     }
 
     pub async fn init(&mut self, mqtt: &mut MqttSession) -> Result<(), MappingError> {
-        if !self.uninitialized.is_empty() {
-            eprintln!("Trying to fetch index {}", self.uninitialized.len() - 1);
-        } else {
-            eprintln!("Trying to fetch locks, but queue is empty");
-        }
         while let Some(lock) = self.uninitialized.last().map(<Arc<_> as Clone>::clone) {
             let mut acquire_lock = pin!(lock.lock_owned());
             loop {
-                eprintln!("Trying to acquire lock");
-                let timeout = std::time::Duration::from_secs(1);
                 select! {
                     _ = &mut acquire_lock => {
                         self.uninitialized.pop();
                         break
-                    }
-                    _ = tokio::time::sleep(timeout) => {
-                        eprintln!("Timeout!!!!!!");
                     }
                     tick_result = self.tick() => {
                         let _: () = tick_result?;
@@ -437,7 +427,6 @@ impl Mapping {
                     }
                 }
             }
-            eprintln!("{} states left", self.uninitialized.len());
         }
         Ok(())
     }
@@ -449,7 +438,6 @@ impl Mapping {
         mqtt: &mut MqttSession,
     ) -> Result<(), MappingError> {
         let config_topic = mqtt.topic(&mapping.mqtt_type, &mapping.unique_id, Topic::Config);
-        eprintln!("Configuring {config_topic}");
         let mut counter = 0;
         let topics = mqtt.topic_generator();
         let GenericMapping {
@@ -486,7 +474,6 @@ impl Mapping {
                             let mutex = Arc::new(Mutex::new(())).try_lock_owned().expect(
                                 "This mutex was just created, the lock should be guaranteed",
                             );
-                            let this_index = self.uninitialized.len();
                             self.uninitialized
                                 .push(OwnedMutexGuard::mutex(&mutex).clone());
                             let mut first_state_sent = Some(mutex);
@@ -494,7 +481,6 @@ impl Mapping {
                                 loop {
                                     let reported_value = data_subscription.borrow_and_update();
                                     let payload = serde_json::to_vec(&reported_value)?;
-                                    eprintln!("Sending state {topic} (index {})", this_index);
                                     sender
                                         .publish(
                                             Path::new(&topic),
@@ -502,10 +488,6 @@ impl Mapping {
                                             payload,
                                         )
                                         .await?;
-                                    eprintln!(
-                                        "State for index {} sent, releasing lock",
-                                        this_index
-                                    );
                                     let lock: Option<OwnedMutexGuard<()>> =
                                         mem::take(&mut first_state_sent);
                                     drop(lock);
@@ -517,13 +499,11 @@ impl Mapping {
                     }
                     MqttType::Command { command } => {
                         let topic = next_topic(Topic::Set);
-                        eprintln!("Subscribing to {topic}");
                         mqtt.mqtt_subscribe(vec![SubscribeTopic {
                             topic_path: topic.clone(),
                             qos: QoS::AtMostOnce,
                         }])
                         .await?;
-                        eprintln!("Subscribed");
                         let mut receiver = mqtt.subscribe();
                         let spa_sender = spa.sender();
                         {
@@ -611,8 +591,13 @@ impl Mapping {
     }
 
     pub async fn tick(&mut self) -> Result<(), MappingError> {
-        if let Some(join_result) = self.jobs.join_next().await {
-            _ = join_result?;
+        select! {
+            join_result = self.jobs.join_next() => {
+                if let Some(join_result) = join_result {
+                    join_result??;
+                }
+            }
+            _ = tokio::time::sleep(tokio::time::Duration::from_millis(1000)), if self.jobs.is_empty() => {},
         }
         Ok(())
     }

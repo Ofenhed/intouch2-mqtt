@@ -232,7 +232,7 @@ impl SpaConnection {
                     let _: () = result??;
                 }
             },
-            _ = time::sleep(time::Duration::from_millis(100)) => {},
+            _ = time::sleep(time::Duration::from_millis(1000)), if jobs.is_empty() => {},
         }
         Ok(())
     }
