@@ -409,7 +409,7 @@ impl Mapping {
         self.uninitialized = vec![];
     }
 
-    pub async fn init(&mut self) -> Result<(), MappingError> {
+    pub async fn init(&mut self, mqtt: &mut MqttSession) -> Result<(), MappingError> {
         if !self.uninitialized.is_empty() {
             eprintln!("Trying to fetch index {}", self.uninitialized.len() - 1);
         } else {
@@ -418,14 +418,22 @@ impl Mapping {
         while let Some(lock) = self.uninitialized.last().map(<Arc<_> as Clone>::clone) {
             let mut acquire_lock = pin!(lock.lock_owned());
             loop {
+                eprintln!("Trying to acquire lock");
+                let timeout = std::time::Duration::from_secs(1);
                 select! {
                     _ = &mut acquire_lock => {
                         self.uninitialized.pop();
                         break
                     }
+                    _ = tokio::time::sleep(timeout) => {
+                        eprintln!("Timeout!!!!!!");
+                    }
                     tick_result = self.tick() => {
                         let _: () = tick_result?;
                         continue
+                    }
+                    mqtt_result = mqtt.tick() => {
+                        let _: () = mqtt_result?;
                     }
                 }
             }
@@ -475,9 +483,12 @@ impl Mapping {
                             let mut sender = mqtt.publisher();
                             let mut data_subscription =
                                 state.subscribe(&spa, &mut self.jobs).await?;
-                            let mutex = Arc::new(Mutex::new(())).try_lock_owned().expect("This mutex was just created, the lock should be guaranteed");
+                            let mutex = Arc::new(Mutex::new(())).try_lock_owned().expect(
+                                "This mutex was just created, the lock should be guaranteed",
+                            );
                             let this_index = self.uninitialized.len();
-                            self.uninitialized.push(OwnedMutexGuard::mutex(&mutex).clone());
+                            self.uninitialized
+                                .push(OwnedMutexGuard::mutex(&mutex).clone());
                             let mut first_state_sent = Some(mutex);
                             self.jobs.spawn(async move {
                                 loop {
@@ -491,8 +502,12 @@ impl Mapping {
                                             payload,
                                         )
                                         .await?;
-                                    eprintln!("State for index {} sent, releasing lock", this_index);
-                                    let lock: Option<OwnedMutexGuard<()>> = mem::take(&mut first_state_sent);
+                                    eprintln!(
+                                        "State for index {} sent, releasing lock",
+                                        this_index
+                                    );
+                                    let lock: Option<OwnedMutexGuard<()>> =
+                                        mem::take(&mut first_state_sent);
                                     drop(lock);
                                     data_subscription.changed().await?;
                                 }

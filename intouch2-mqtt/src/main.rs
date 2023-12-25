@@ -495,7 +495,7 @@ async fn main() -> anyhow::Result<()> {
                     if args.verbose {
                         eprintln!("Waiting for all states to be sent before notifying online");
                     }
-                    mapping.init().await?;
+                    mapping.init(&mut mqtt).await?;
                     if args.verbose {
                         eprintln!("Notifying online");
                     }
