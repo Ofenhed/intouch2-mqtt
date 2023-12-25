@@ -4,7 +4,7 @@ use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
 use serde::Deserialize;
 use tokio::{
     select,
-    sync::{mpsc, watch, Mutex, RwLock},
+    sync::{mpsc, watch, Mutex},
     task::JoinSet,
 };
 
@@ -452,8 +452,6 @@ impl Mapping {
         };
 
         let device = self.device.clone();
-        let mqtt_waiter = Arc::new(RwLock::new(()));
-        let config_not_published = mqtt_waiter.clone().write_owned().await;
         let json_config = {
             let mut config = home_assistant::ConfigureGeneric {
                 base: home_assistant::ConfigureBase {
@@ -473,12 +471,10 @@ impl Mapping {
                             let mut sender = mqtt.sender();
                             let mut data_subscription =
                                 state.subscribe(&spa, &mut self.jobs).await?;
-                            let mqtt_config_complete = mqtt_waiter.clone();
                             let mutex = Arc::new(Mutex::new(()));
                             let mut uninitialized = Some(mutex.clone().lock_owned().await);
                             self.uninitialized.push(mutex);
                             self.jobs.spawn(async move {
-                                mqtt_config_complete.read_owned().await;
                                 loop {
                                     let reported_value = data_subscription.borrow_and_update();
                                     if let Some(reported_value) = reported_value {
@@ -582,7 +578,6 @@ impl Mapping {
             payload: &json_config,
         });
         mqtt.send(config_packet).await?;
-        drop(config_not_published);
         Ok(())
     }
 
