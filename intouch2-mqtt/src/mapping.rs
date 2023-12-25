@@ -491,6 +491,7 @@ impl Mapping {
                                             payload,
                                         )
                                         .await?;
+                                    eprintln!("State for index {} sent, releasing lock", this_index);
                                     drop(mem::take(&mut first_state_sent));
                                     data_subscription.changed().await?;
                                 }
