@@ -150,6 +150,8 @@ pub enum MqttError {
     MqttPublishReply,
     #[error("Publish timeout")]
     PublishTimeout,
+    #[error("Forwarding MQTT packages to subscribers failed")]
+    ForwardToSubscribers,
 }
 
 #[derive(strum::IntoStaticStr)]
@@ -335,7 +337,7 @@ impl Session {
                         _ => (),
                     }
                     let package = Arc::new(package);
-                    _ = self.subscribers.send(package.clone());
+                    self.subscribers.send(package.clone()).map_err(|_| MqttError::ForwardToSubscribers)?;
                     return Ok(package)
                 },
                 _ = self.ping_interval.tick() => {
