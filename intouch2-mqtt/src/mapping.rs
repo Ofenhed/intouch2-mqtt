@@ -1,4 +1,4 @@
-use std::{collections::HashMap, future::Future, mem, path::Path, pin::Pin, sync::Arc};
+use std::{collections::HashMap, future::Future, mem, path::Path, pin::{Pin, pin}, sync::Arc};
 
 use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
 use serde::Deserialize;
@@ -570,13 +570,24 @@ impl Mapping {
             }
             serde_json::to_vec(&config)?
         };
-        mqtt.publisher()
+        let mut publisher = mqtt.publisher();
+        let mut publish = pin!(publisher
             .publish(
                 Path::new(&config_topic),
                 QosPid::AtLeastOnce(mqtt.next_pid()),
                 json_config,
-            )
-            .await?;
+            ));
+        loop {
+            select! {
+                publish_result = &mut publish => {
+                    publish_result?;
+                    break
+                }
+                mqtt_result = mqtt.tick() => {
+                    mqtt_result?
+                }
+            }
+        }
         Ok(())
     }
 
