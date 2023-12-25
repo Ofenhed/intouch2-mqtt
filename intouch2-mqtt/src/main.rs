@@ -463,7 +463,20 @@ async fn main() -> anyhow::Result<()> {
             if args.verbose {
                 eprintln!("Waiting for complete memory dump");
             }
-            spa.write().await.wait_for_valid_data().await?;
+            loop {
+                let mut spa = spa.write().await;
+                select! {
+                    wait_result = spa.wait_for_valid_data() => {
+                        let _: () = wait_result?;
+                        break
+                    }
+                    jobs_result = join_set.join_next() => {
+                        if let Some(jobs_result) = jobs_result {
+                            let _: JoinResult = jobs_result??;
+                        }
+                    }
+                }
+            }
             if args.verbose {
                 eprintln!("Memory dump received");
             }
