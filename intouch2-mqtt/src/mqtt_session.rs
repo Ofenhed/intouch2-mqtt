@@ -134,6 +134,8 @@ pub enum MqttError {
     AuthenticationFailed(ConnectReturnCode),
     #[error("JSON error: {0}")]
     JSON(#[from] serde_json::Error),
+    #[error("MQTT Subscribe timed out: {0:?}")]
+    MqttSubscribeTimeout(Box<[SubscribeTopic]>),
     #[error("MQTT Subscribe failed: {0:?}")]
     MqttSubscribeFailed(Box<[SubscribeTopic]>),
     #[error("MQTT Send pipe failed: {0}")]
@@ -273,30 +275,41 @@ impl Session {
             topics: topics.clone(),
         });
         let encoded_len = encode_slice(&packet, self.buffer.as_mut())?;
-        self.stream.write(&self.buffer[..encoded_len]).await?;
-        loop {
-            match &self.recv().await?.packet {
-                Packet::Suback(Suback { pid, return_codes }) if pid == &subscribe_pid => {
-                    let failed: Box<_> = topics
-                        .into_iter()
-                        .zip(return_codes.into_iter())
-                        .filter_map(|(topic, return_code)| {
-                            if !matches!(return_code, SubscribeReturnCodes::Success(_)) {
-                                Some(topic)
-                            } else {
-                                None
+        let sleep_duration = self.publish_timeout / self.publish_retries.into();
+        for _ in 0..usize::from(self.publish_retries) {
+            self.stream.write(&self.buffer[..encoded_len]).await?;
+            'keep_waiting: loop {
+                select! {
+                    _ = tokio::time::sleep(sleep_duration) => {
+                        break 'keep_waiting
+                    }
+                    received = self.recv() => {
+                        match &received?.packet {
+                            Packet::Suback(Suback { pid, return_codes }) if pid == &subscribe_pid => {
+                                let failed: Box<_> = topics
+                                    .into_iter()
+                                    .zip(return_codes.into_iter())
+                                    .filter_map(|(topic, return_code)| {
+                                        if !matches!(return_code, SubscribeReturnCodes::Success(_)) {
+                                            Some(topic)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect();
+                                if !failed.is_empty() {
+                                    return Err(MqttError::MqttSubscribeFailed(failed))?;
+                                } else {
+                                    return Ok(());
+                                }
                             }
-                        })
-                        .collect();
-                    if !failed.is_empty() {
-                        return Err(MqttError::MqttSubscribeFailed(failed))?;
-                    } else {
-                        return Ok(());
+                            _ => (),
+                        }
                     }
                 }
-                _ => (),
             }
         }
+        Err(MqttError::MqttSubscribeTimeout(topics.into()))
     }
 
     pub async fn tick(&mut self) -> Result<(), MqttError> {
@@ -356,36 +369,39 @@ impl Session {
                                 let topic_name = topic.display().to_string();
                                 let packet = Packet::Publish(Publish { dup: attempt != 0, qospid: pid, retain: false, topic_name: &topic_name, payload: &payload });
                                 sender.send(&packet).await?;
-                                match pid {
-                                    QosPid::AtMostOnce => {
-                                        return Ok(())
+                                let mut timeout = pin!(tokio::time::sleep(timeout));
+                                'keep_waiting: loop {
+                                    match pid {
+                                        QosPid::AtMostOnce => {
+                                            return Ok(())
+                                        }
+                                        qos@QosPid::AtLeastOnce(pid) | qos@QosPid::ExactlyOnce(pid) => select! {
+                                            _ = &mut timeout => {
+                                                match qos {
+                                                    QosPid::AtLeastOnce(_) => break 'keep_waiting,
+                                                    QosPid::ExactlyOnce(_) => {
+                                                        response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
+                                                        return Ok(());
+                                                    },
+                                                    QosPid::AtMostOnce => unreachable!(),
+                                                }
+                                            }
+                                            package = receiver.recv() => {
+                                                match package?.packet {
+                                                    Packet::Puback(ack_pid) if ack_pid == pid => {
+                                                        response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
+                                                        return Ok(())
+                                                    }
+                                                    Packet::Pubrec(ack_pid) if ack_pid == pid => {
+                                                        sender.send(&Packet::Pubrel(ack_pid)).await?;
+                                                        response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
+                                                        return Ok(())
+                                                    }
+                                                    _ => (),
+                                                }
+                                            }
+                                        },
                                     }
-                                    qos@QosPid::AtLeastOnce(pid) | qos@QosPid::ExactlyOnce(pid) => select! {
-                                        _ = tokio::time::sleep(timeout) => {
-                                            match qos {
-                                                QosPid::AtLeastOnce(_) => continue,
-                                                QosPid::ExactlyOnce(_) => {
-                                                    response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
-                                                    return Ok(());
-                                                },
-                                                QosPid::AtMostOnce => unreachable!(),
-                                            }
-                                        }
-                                        package = receiver.recv() => {
-                                            match package?.packet {
-                                                Packet::Puback(ack_pid) if ack_pid == pid => {
-                                                    response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
-                                                    return Ok(())
-                                                }
-                                                Packet::Pubrec(ack_pid) if ack_pid == pid => {
-                                                    sender.send(&Packet::Pubrel(ack_pid)).await?;
-                                                    response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
-                                                    return Ok(())
-                                                }
-                                                _ => (),
-                                            }
-                                        }
-                                    },
                                 }
                             }
                             response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
