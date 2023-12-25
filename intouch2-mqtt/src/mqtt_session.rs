@@ -1,17 +1,21 @@
 use mqttrs::*;
 use std::{
     net::SocketAddr,
-    ops::{Add, Deref},
+    ops::Deref,
     path::Path,
-    pin::Pin,
-    sync::Arc,
+    pin::{pin, Pin},
+    sync::{
+        atomic::{AtomicU16, Ordering},
+        Arc,
+    },
 };
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpSocket, TcpStream},
     select,
-    sync::{broadcast, mpsc},
+    sync::{self, broadcast, mpsc},
+    task::JoinSet,
     time,
 };
 
@@ -32,6 +36,8 @@ pub struct SessionBuilder<'a> {
     pub target: SocketAddr,
     pub auth: MqttAuth<'a>,
     pub keep_alive: u16,
+    pub publish_retries: u8,
+    pub publish_timeout: time::Duration,
 }
 
 #[derive(Debug)]
@@ -66,16 +72,49 @@ impl TryFrom<&'_ [u8]> for MqttPacket {
     }
 }
 
+pub struct AtomicPid {
+    pid: AtomicU16,
+}
+
+impl AtomicPid {
+    pub fn next_pid(&self) -> Pid {
+        loop {
+            if let Ok(pid) = self.pid.fetch_add(1, Ordering::Relaxed).try_into() {
+                return pid;
+            }
+        }
+    }
+}
+
+impl Default for AtomicPid {
+    fn default() -> Self {
+        Self { pid: 1.into() }
+    }
+}
+
+#[derive(Debug)]
+pub struct PublishQueueEntry {
+    topic: Arc<Path>,
+    payload: Arc<[u8]>,
+    qospid: QosPid,
+    response: sync::oneshot::Sender<Result<(), MqttError>>,
+}
+
 pub struct Session {
     stream: TcpStream,
+    jobs: JoinSet<Result<(), MqttError>>,
     buffer: Box<[u8; 4096]>,
     discovery_topic: Arc<Path>,
     availability_topic: Option<Arc<str>>,
     base_topic: Arc<Path>,
-    pid: Pid,
+    pid: Arc<AtomicPid>,
     send_queue: mpsc::Receiver<Box<[u8]>>,
     send_queue_sender: mpsc::Sender<Box<[u8]>>,
+    publish_queue: mpsc::Receiver<PublishQueueEntry>,
+    publish_queue_sender: mpsc::Sender<PublishQueueEntry>,
     subscribers: broadcast::Sender<Arc<MqttPacket>>,
+    publish_timeout: time::Duration,
+    publish_retries: u8,
     ping_interval: time::Interval,
 }
 
@@ -87,6 +126,8 @@ pub enum MqttError {
     Encoding(#[from] mqttrs::Error),
     #[error("Not enough data received: {}", String::from_utf8_lossy(.0))]
     NotEnoughData(Box<[u8]>),
+    #[error("Runtime error: {0}")]
+    JoinError(#[from] tokio::task::JoinError),
     #[error("Unexpected packet type: {0:?}")]
     UnexpectedPacketType(PacketType),
     #[error("Authentication failed: {0:?}")]
@@ -97,6 +138,16 @@ pub enum MqttError {
     MqttSubscribeFailed(Box<[SubscribeTopic]>),
     #[error("MQTT Send pipe failed: {0}")]
     PipeSend(#[from] mpsc::error::SendError<Box<[u8]>>),
+    #[error("Failed to receive data from MQTT: {0}")]
+    MqttRecvError(#[from] broadcast::error::RecvError),
+    #[error("MQTT publish send failed: {0}")]
+    MqttPublishSend(#[from] mpsc::error::SendError<PublishQueueEntry>),
+    #[error("MQTT publish recv failed: {0}")]
+    MqttPublishRecv(#[from] sync::oneshot::error::RecvError),
+    #[error("MQTT publish reply failed")]
+    MqttPublishReply,
+    #[error("Publish timeout")]
+    PublishTimeout,
 }
 
 #[derive(strum::IntoStaticStr)]
@@ -114,6 +165,7 @@ pub enum Topic {
 pub struct PacketSender {
     sender: mpsc::Sender<Box<[u8]>>,
     buffer: Box<[u8; 4096]>,
+    pid: Arc<AtomicPid>,
 }
 
 impl PacketSender {
@@ -121,6 +173,37 @@ impl PacketSender {
         let len = encode_slice(&packet, self.buffer.as_mut())?;
         self.sender.send(self.buffer[..len].into()).await?;
         Ok(())
+    }
+    pub fn next_pid(&self) -> Pid {
+        self.pid.next_pid()
+    }
+}
+
+#[derive(Clone)]
+pub struct PacketPublisher {
+    sender: mpsc::Sender<PublishQueueEntry>,
+    pid: Arc<AtomicPid>,
+}
+
+impl PacketPublisher {
+    pub async fn publish(
+        &mut self,
+        topic: impl Into<Arc<Path>>,
+        qos: QosPid,
+        payload: impl Into<Arc<[u8]>>,
+    ) -> Result<(), MqttError> {
+        let (tx, rx) = sync::oneshot::channel();
+        let package = PublishQueueEntry {
+            topic: topic.into(),
+            payload: payload.into(),
+            qospid: qos,
+            response: tx,
+        };
+        self.sender.send(package).await?;
+        Ok(rx.await??)
+    }
+    pub fn next_pid(&self) -> Pid {
+        self.pid.next_pid()
     }
 }
 
@@ -160,10 +243,8 @@ impl Session {
     pub fn topic(&self, r#type: &str, name: &str, topic: Topic) -> String {
         self.topic_generator().topic(r#type, name, topic)
     }
-    fn next_pid(&mut self) -> Pid {
-        let mut new_pid = self.pid.add(1);
-        std::mem::swap(&mut self.pid, &mut new_pid);
-        new_pid
+    pub fn next_pid(&self) -> Pid {
+        self.pid.next_pid()
     }
 
     pub fn subscribe(&mut self) -> broadcast::Receiver<Arc<MqttPacket>> {
@@ -174,6 +255,14 @@ impl Session {
         PacketSender {
             sender: self.send_queue_sender.clone(),
             buffer: Box::new([0; 4096]),
+            pid: self.pid.clone(),
+        }
+    }
+
+    pub fn publisher(&self) -> PacketPublisher {
+        PacketPublisher {
+            sender: self.publish_queue_sender.clone(),
+            pid: self.pid.clone(),
         }
     }
 
@@ -246,25 +335,91 @@ impl Session {
                         self.stream.write(send.as_ref()).await?;
                     }
                 },
+                job_result = self.jobs.join_next() => {
+                    if let Some(job_result) = job_result {
+                        let _: () = job_result??;
+                    }
+                }
+                to_publish = self.publish_queue.recv() => {
+                    if let Some(PublishQueueEntry { topic, payload, qospid: pid, response }) = to_publish {
+                        let publish_retries = self.publish_retries;
+                        let publish_timeout = self.publish_timeout;
+                        let mut sender = self.sender();
+                        let mut receiver = self.subscribe();
+                        self.jobs.spawn(async move {
+                            let timeout = match pid {
+                                QosPid::AtMostOnce => time::Duration::ZERO,
+                                QosPid::AtLeastOnce(_) => publish_timeout / publish_retries.into(),
+                                QosPid::ExactlyOnce(_) => publish_timeout,
+                            };
+                            for attempt in 0 ..= usize::from(publish_retries) {
+                                let topic_name = topic.display().to_string();
+                                let packet = Packet::Publish(Publish { dup: attempt != 0, qospid: pid, retain: false, topic_name: &topic_name, payload: &payload });
+                                sender.send(&packet).await?;
+                                match pid {
+                                    QosPid::AtMostOnce => {
+                                        return Ok(())
+                                    }
+                                    qos@QosPid::AtLeastOnce(pid) | qos@QosPid::ExactlyOnce(pid) => select! {
+                                        _ = tokio::time::sleep(timeout) => {
+                                            match qos {
+                                                QosPid::AtLeastOnce(_) => continue,
+                                                QosPid::ExactlyOnce(_) => {
+                                                    response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
+                                                    return Ok(());
+                                                },
+                                                QosPid::AtMostOnce => unreachable!(),
+                                            }
+                                        }
+                                        package = receiver.recv() => {
+                                            match package?.packet {
+                                                Packet::Puback(ack_pid) if ack_pid == pid => {
+                                                    response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
+                                                    return Ok(())
+                                                }
+                                                _ => (),
+                                            }
+                                        }
+                                    },
+                                }
+                            }
+                            response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
+                            Ok(())
+                        });
+                    }
+                },
             }
         }
     }
 
-    pub async fn notify_online(&self) -> Result<(), MqttError> {
-        if let Some(availability_topic) = self.availability_topic.as_deref() {
-            let packet = Packet::Publish(Publish {
-                dup: false,
-                qospid: QosPid::AtMostOnce,
-                retain: false,
-                topic_name: availability_topic,
-                payload: b"online",
-            });
-            self.sender().send(&packet).await?;
+    pub async fn notify_online(&mut self) -> Result<(), MqttError> {
+        if let Some(availability_topic) = self
+            .availability_topic
+            .as_ref()
+            .map(|path| Arc::from(Path::new(&**path)))
+        {
+            let mut publisher = self.publisher();
+            let mut publish = pin!(publisher.publish(
+                availability_topic,
+                QosPid::AtLeastOnce(self.next_pid()),
+                *b"online"
+            ));
+            loop {
+                select! {
+                    publish_result = &mut publish => {
+                        publish_result?;
+                        return Ok(())
+                    },
+                    tick_result = self.tick() => {
+                        tick_result?;
+                    },
+                }
+            }
         }
         Ok(())
     }
 
-    pub async fn send(&mut self, packet: Packet<'_>) -> Result<(), MqttError> {
+    pub async fn send(&mut self, packet: &Packet<'_>) -> Result<(), MqttError> {
         let encoded_len = encode_slice(&packet, self.buffer.as_mut())?;
         self.stream.write(&self.buffer[..encoded_len]).await?;
         Ok(())
@@ -313,6 +468,7 @@ impl SessionBuilder<'_> {
             match ack.code {
                 ConnectReturnCode::Accepted => {
                     let (send_queue_sender, send_queue) = mpsc::channel(10);
+                    let (publish_queue_sender, publish_queue) = mpsc::channel(10);
                     let ping_interval = time::interval_at(
                         time::Instant::now(),
                         time::Duration::from_secs((self.keep_alive >> 1).into()),
@@ -320,14 +476,19 @@ impl SessionBuilder<'_> {
                     Ok(Session {
                         stream,
                         buffer,
+                        jobs: JoinSet::new(),
                         availability_topic: self.availability_topic,
                         base_topic: Arc::from(Path::new(&*self.base_topic)),
                         discovery_topic: Arc::from(Path::new(&*self.discovery_topic)),
-                        pid: Pid::new(),
+                        pid: Default::default(),
+                        publish_retries: self.publish_retries,
+                        publish_timeout: self.publish_timeout,
                         subscribers: tokio::sync::broadcast::Sender::new(10),
                         send_queue,
                         send_queue_sender,
                         ping_interval,
+                        publish_queue,
+                        publish_queue_sender,
                     })
                 }
                 failed => Err(MqttError::AuthenticationFailed(failed)),

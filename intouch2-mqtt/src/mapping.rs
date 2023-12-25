@@ -1,4 +1,4 @@
-use std::{collections::HashMap, future::Future, mem, pin::Pin, sync::Arc};
+use std::{collections::HashMap, future::Future, mem, path::Path, pin::Pin, sync::Arc};
 
 use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
 use serde::Deserialize;
@@ -468,13 +468,11 @@ impl Mapping {
                         {
                             let topic = topic.clone();
                             let state = state.clone();
-                            let mut sender = mqtt.sender();
+                            let mut sender = mqtt.publisher();
                             let mut data_subscription =
                                 state.subscribe(&spa, &mut self.jobs).await?;
                             let mutex = Arc::new(Mutex::new(()));
-                            eprintln!("Getting lock, should be trivial");
                             let mut uninitialized = Some(mutex.clone().lock_owned().await);
-                            eprintln!("Got lock");
                             self.uninitialized.push(mutex);
                             self.jobs.spawn(async move {
                                 loop {
@@ -482,14 +480,13 @@ impl Mapping {
                                     if let Some(reported_value) = reported_value {
                                         if !reported_value.is_null() {
                                             let payload = serde_json::to_vec(&reported_value)?;
-                                            let package = Packet::Publish(Publish {
-                                                dup: false,
-                                                qospid: QosPid::AtMostOnce,
-                                                retain: false,
-                                                topic_name: &topic,
-                                                payload: &payload,
-                                            });
-                                            sender.send(&package).await?;
+                                            sender
+                                                .publish(
+                                                    Path::new(&topic),
+                                                    QosPid::AtLeastOnce(sender.next_pid()),
+                                                    payload,
+                                                )
+                                                .await?;
                                             drop(mem::take(&mut uninitialized));
                                         }
                                     }
@@ -572,14 +569,13 @@ impl Mapping {
             }
             serde_json::to_vec(&config)?
         };
-        let config_packet = Packet::Publish(Publish {
-            dup: false,
-            qospid: QosPid::AtMostOnce,
-            retain: false,
-            topic_name: &config_topic,
-            payload: &json_config,
-        });
-        mqtt.send(config_packet).await?;
+        mqtt.publisher()
+            .publish(
+                Path::new(&config_topic),
+                QosPid::AtLeastOnce(mqtt.next_pid()),
+                json_config,
+            )
+            .await?;
         Ok(())
     }
 
