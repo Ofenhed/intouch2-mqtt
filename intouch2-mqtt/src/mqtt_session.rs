@@ -371,6 +371,7 @@ impl Session {
                             for attempt in 0 ..= usize::from(publish_retries) {
                                 let topic_name = topic.display().to_string();
                                 let packet = Packet::Publish(Publish { dup: attempt != 0, qospid: pid, retain: false, topic_name: &topic_name, payload: &payload });
+                                eprintln!("Publishing to topic {topic_name}, pid {pid:?}");
                                 sender.send(&packet).await?;
                                 let mut timeout = pin!(tokio::time::sleep(timeout));
                                 'keep_waiting: loop {
@@ -396,10 +397,12 @@ impl Session {
                                             package = receiver.recv() => {
                                                 match package?.packet {
                                                     Packet::Puback(ack_pid) if ack_pid == pid => {
+                                                        eprintln!("Publish to {topic_name} acked (to pid {ack_pid:?})");
                                                         response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
                                                         return Ok(())
                                                     }
                                                     Packet::Pubrec(ack_pid) if ack_pid == pid => {
+                                                        eprintln!("Publish to {topic_name} received (to pid {ack_pid:?})");
                                                         sender.send(&Packet::Pubrel(ack_pid)).await?;
                                                         response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
                                                         return Ok(())
