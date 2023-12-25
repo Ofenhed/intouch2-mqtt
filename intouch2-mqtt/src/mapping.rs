@@ -475,7 +475,7 @@ impl Mapping {
                             let mut sender = mqtt.publisher();
                             let mut data_subscription =
                                 state.subscribe(&spa, &mut self.jobs).await?;
-                            let mutex = Arc::new(Mutex::new(())).blocking_lock_owned();
+                            let mutex = Arc::new(Mutex::new(())).try_lock_owned().expect("This mutex was just created, the lock should be guaranteed");
                             let this_index = self.uninitialized.len();
                             self.uninitialized.push(OwnedMutexGuard::mutex(&mutex).clone());
                             let mut first_state_sent = Some(mutex);
