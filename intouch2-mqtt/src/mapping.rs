@@ -411,14 +411,19 @@ impl Mapping {
 
     pub async fn init(&mut self) -> Result<(), MappingError> {
         while let Some(lock) = self.uninitialized.last().map(<Arc<_> as Clone>::clone) {
-            select! {
-                _ = lock.lock() => {}
-                tick_result = self.tick() => {
-                    let _: () = tick_result?;
-                    continue;
+            loop {
+                let mut acquire_lock = pin!(lock.lock());
+                select! {
+                    _ = &mut acquire_lock => {
+                        self.uninitialized.pop();
+                        break
+                    }
+                    tick_result = self.tick() => {
+                        let _: () = tick_result?;
+                        continue
+                    }
                 }
             }
-            self.uninitialized.pop();
             eprintln!("{} states left", self.uninitialized.len());
         }
         Ok(())
