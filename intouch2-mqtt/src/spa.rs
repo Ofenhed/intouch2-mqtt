@@ -258,16 +258,19 @@ impl SpaConnection {
             "If this isn't u16, then the data types are incorrect, and we should not keep going",
         );
         let mut jobs = JoinSet::new();
+        let notify_dirty = Arc::new(tokio::sync::Notify::new());
         {
             let gecko_datas = self.state.clone();
             let subscribers = self.state_subscribers.clone();
             let mut state_valid = self.state_valid.subscribe();
+            let dirty = notify_dirty.clone();
             jobs.spawn(async move {
                 loop {
                     if !*state_valid.borrow_and_update() {
                         state_valid.changed().await?;
                         continue;
                     }
+                    dirty.notified().await;
                     let mut gecko_datas = gecko_datas.lock().await;
                     let subscribers = subscribers.lock().await;
                     while let Some(dirty_range) = gecko_datas.peek_dirty() {
@@ -435,6 +438,7 @@ impl SpaConnection {
             let dst = self.dst.clone();
             let seq = self.seq.clone();
             let gecko_data = self.state.clone();
+            let notify_dirty = notify_dirty.clone();
             let mut state_valid = Some(self.state_valid.clone());
             jobs.spawn(async move {
                 loop {
@@ -479,6 +483,7 @@ impl SpaConnection {
                                         let mut gecko_data = gecko_data.lock().await;
                                         gecko_data[data_read..end].copy_from_slice(&*data);
                                         if end == usize::from(gecko_data_len) {
+                                            notify_dirty.notify_waiters();
                                             break 'retry;
                                         }
                                         data_read = end;
@@ -503,6 +508,7 @@ impl SpaConnection {
             let my_id = self.src.clone();
             let tx = self.pipe.tx.clone();
             let seq = self.seq.clone();
+            let notify_dirty = notify_dirty.clone();
             let gecko_data = self.state.clone();
             jobs.spawn(async move {
                 loop {
@@ -522,6 +528,7 @@ impl SpaConnection {
                             let pos = usize::from(pos);
                             let old_data: &mut [u8] = &mut data[pos..pos + new_data.len()];
                             old_data.copy_from_slice(new_data.as_ref());
+                            notify_dirty.notify_waiters();
                         }
                         NetworkPackage::Addressed {
                             data:
@@ -558,6 +565,7 @@ impl SpaConnection {
                                 let old_data: &mut [u8] = &mut data[pos..pos + 2];
                                 old_data.copy_from_slice(new_data.as_ref());
                             }
+                            notify_dirty.notify_waiters();
                         }
                         _ => (),
                     }
