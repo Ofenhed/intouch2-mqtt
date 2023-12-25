@@ -23,7 +23,6 @@ use serde::Deserialize;
 use tokio::{
     net::{self},
     select,
-    sync::RwLock,
     task::JoinSet,
     time::timeout,
 };
@@ -301,7 +300,7 @@ async fn main() -> anyhow::Result<()> {
         local_connection: args.spa_memory_size.map(|_| spa_pipe.forwarder),
     };
     enum JoinResult {
-        SpaConnected(Arc<tokio::sync::RwLock<SpaConnection>>),
+        SpaConnected(SpaConnection),
     }
     let mut join_set = JoinSet::<anyhow::Result<JoinResult>>::new();
     match (&mut mqtt, &args.package_dump_mqtt_topic) {
@@ -365,21 +364,21 @@ async fn main() -> anyhow::Result<()> {
     });
     let mut spa = if let Some(memory_size) = args.spa_memory_size {
         join_set.spawn(async move {
-            Ok(JoinResult::SpaConnected(Arc::new(RwLock::new(
+            Ok(JoinResult::SpaConnected(
                 timeout(
                     Duration::from_secs(5),
                     SpaConnection::new(memory_size, spa_pipe.spa),
                 )
                 .await
                 .map_err(|_| Error::NoReplyFromSpa)??,
-            ))))
+            ))
         });
         let Some(reply) = join_set.join_next().await else {
             unreachable!("The function above will return")
         };
-        let JoinResult::SpaConnected(spa) = reply??;
-        spa.write().await.init().await?;
-        Some(spa)
+        let JoinResult::SpaConnected(mut spa) = reply??;
+        spa.init().await?;
+        Some(Arc::new(spa))
     } else {
         None
     };
@@ -387,7 +386,6 @@ async fn main() -> anyhow::Result<()> {
         (Some(mut mqtt), Some(ref mut spa), memory_change_topic) => {
             if let Some(memory_change_topic) = memory_change_topic {
                 let mut mqtt_sender = mqtt.sender();
-                let spa = spa.read().await;
                 let len = spa.len().await;
                 let mut spa_data = spa.subscribe(0..len).await;
                 let memory_change_topic =
@@ -445,7 +443,6 @@ async fn main() -> anyhow::Result<()> {
                 });
             }
             let (spa_name, spa_version) = {
-                let spa = spa.read().await;
                 let spa_name = String::from_utf8_lossy(spa.name()).to_string();
                 let spa_version = {
                     let package_data::Version {
@@ -466,7 +463,6 @@ async fn main() -> anyhow::Result<()> {
                 eprintln!("Waiting for complete memory dump");
             }
             loop {
-                let mut spa = spa.write().await;
                 select! {
                     wait_result = spa.wait_for_valid_data() => {
                         let _: () = wait_result?;
@@ -501,7 +497,6 @@ async fn main() -> anyhow::Result<()> {
                         eprintln!("Configuring device mapping");
                     }
                     {
-                        let spa = spa.read().await;
                         for entity in &args.entities {
                             mapping
                                 .add_generic(entity.unwrap().clone(), &*spa, &mut mqtt)
@@ -553,7 +548,7 @@ async fn main() -> anyhow::Result<()> {
     if let Some(spa) = spa {
         join_set.spawn(async move {
             loop {
-                spa.write().await.tick().await?;
+                spa.tick().await?;
             }
         });
     }

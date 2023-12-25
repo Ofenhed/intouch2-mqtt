@@ -35,7 +35,7 @@ pub struct SpaConnection {
     full_state_download_interval: Arc<Mutex<time::Interval>>,
     state: Arc<sync::Mutex<GeckoDatas>>,
     state_valid: Arc<sync::watch::Sender<bool>>,
-    jobs: Option<JoinSet<Result<(), SpaError>>>,
+    jobs: Option<Mutex<JoinSet<Result<(), SpaError>>>>,
     state_subscribers:
         Arc<sync::Mutex<HashMap<Range<usize>, sync::watch::Sender<Option<Box<[u8]>>>>>>,
     commanders: Arc<sync::Mutex<sync::mpsc::Receiver<SpaCommand>>>,
@@ -226,10 +226,11 @@ impl SpaConnection {
         (*self.new_commander).clone()
     }
 
-    pub async fn tick(&mut self) -> Result<(), SpaError> {
-        let Some(ref mut jobs) = self.jobs else {
+    pub async fn tick(&self) -> Result<(), SpaError> {
+        let Some(ref jobs) = self.jobs else {
             return Err(SpaError::NotInitialized);
         };
+        let mut jobs = jobs.lock().await;
         select! {
             result = jobs.join_next(), if !jobs.is_empty() => {
                 if let Some(result) = result {
@@ -241,7 +242,7 @@ impl SpaConnection {
         Ok(())
     }
 
-    pub async fn wait_for_valid_data(&mut self) -> Result<(), SpaError> {
+    pub async fn wait_for_valid_data(&self) -> Result<(), SpaError> {
         let mut subscriber = self.state_valid.subscribe();
         loop {
             if *subscriber.borrow_and_update() {
@@ -577,7 +578,7 @@ impl SpaConnection {
                 }
             });
         }
-        self.jobs = Some(jobs);
+        self.jobs = Some(Mutex::new(jobs));
         Ok(())
     }
 }
