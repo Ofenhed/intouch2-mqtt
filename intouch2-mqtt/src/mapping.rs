@@ -419,6 +419,7 @@ impl Mapping {
                 }
             }
             self.uninitialized.pop();
+            eprintln!("{} states left", self.uninitialized.len());
         }
         Ok(())
     }
