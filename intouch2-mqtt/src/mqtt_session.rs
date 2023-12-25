@@ -504,7 +504,7 @@ impl SessionBuilder<'_> {
                         pid: Default::default(),
                         publish_retries: self.publish_retries,
                         publish_timeout: self.publish_timeout,
-                        subscribers: tokio::sync::broadcast::Sender::new(10),
+                        subscribers: tokio::sync::broadcast::Sender::new(100),
                         send_queue,
                         send_queue_sender,
                         ping_interval,
