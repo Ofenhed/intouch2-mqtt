@@ -410,6 +410,11 @@ impl Mapping {
     }
 
     pub async fn init(&mut self) -> Result<(), MappingError> {
+        if !self.uninitialized.is_empty() {
+            eprintln!("Trying to fetch index {}", self.uninitialized.len() - 1);
+        } else {
+            eprintln!("Trying to fetch locks, but queue is empty");
+        }
         while let Some(lock) = self.uninitialized.last().map(<Arc<_> as Clone>::clone) {
             loop {
                 let mut acquire_lock = pin!(lock.lock());
@@ -478,7 +483,7 @@ impl Mapping {
                                 loop {
                                     let reported_value = data_subscription.borrow_and_update();
                                     let payload = serde_json::to_vec(&reported_value)?;
-                                    eprintln!("Sending state {topic}, current length is {}", this_index);
+                                    eprintln!("Sending state {topic} (index {})", this_index);
                                     sender
                                         .publish(
                                             Path::new(&topic),
