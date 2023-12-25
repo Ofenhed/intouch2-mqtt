@@ -367,6 +367,7 @@ impl Session {
                                 QosPid::AtLeastOnce(_) => publish_timeout / publish_retries.into(),
                                 QosPid::ExactlyOnce(_) => publish_timeout,
                             };
+                            let mut real_timeout = pin!(tokio::time::sleep_until((std::time::Instant::now() + publish_timeout).into()));
                             for attempt in 0 ..= usize::from(publish_retries) {
                                 let topic_name = topic.display().to_string();
                                 let packet = Packet::Publish(Publish { dup: attempt != 0, qospid: pid, retain: false, topic_name: &topic_name, payload: &payload });
@@ -378,6 +379,10 @@ impl Session {
                                             return Ok(())
                                         }
                                         qos@QosPid::AtLeastOnce(pid) | qos@QosPid::ExactlyOnce(pid) => select! {
+                                            _ = &mut real_timeout => {
+                                                response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
+                                                return Ok(());
+                                            }
                                             _ = &mut timeout => {
                                                 match qos {
                                                     QosPid::AtLeastOnce(_) => break 'keep_waiting,
