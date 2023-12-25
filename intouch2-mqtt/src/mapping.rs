@@ -471,12 +471,14 @@ impl Mapping {
                             let mut data_subscription =
                                 state.subscribe(&spa, &mut self.jobs).await?;
                             let mutex = Arc::new(Mutex::new(()));
-                            let mut uninitialized = Some(mutex.clone().lock_owned().await);
+                            let mut first_state_sent = Some(mutex.clone().lock_owned().await);
+                            let this_index = self.uninitialized.len();
                             self.uninitialized.push(mutex);
                             self.jobs.spawn(async move {
                                 loop {
                                     let reported_value = data_subscription.borrow_and_update();
                                     let payload = serde_json::to_vec(&reported_value)?;
+                                    eprintln!("Sending state {topic}, current length is {}", this_index);
                                     sender
                                         .publish(
                                             Path::new(&topic),
@@ -484,7 +486,7 @@ impl Mapping {
                                             payload,
                                         )
                                         .await?;
-                                    drop(mem::take(&mut uninitialized));
+                                    drop(mem::take(&mut first_state_sent));
                                     data_subscription.changed().await?;
                                 }
                             });
