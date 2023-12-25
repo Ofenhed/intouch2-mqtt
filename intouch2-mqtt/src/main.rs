@@ -475,6 +475,9 @@ async fn main() -> anyhow::Result<()> {
                             let _: JoinResult = jobs_result??;
                         }
                     }
+                    mqtt_result = mqtt.tick() => {
+                        let _: () = mqtt_result?;
+                    }
                 }
             }
             if args.verbose {
