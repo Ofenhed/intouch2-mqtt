@@ -11,7 +11,7 @@ use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
 use serde::Deserialize;
 use tokio::{
     select,
-    sync::{mpsc, watch, Mutex},
+    sync::{mpsc, watch, Mutex, OwnedMutexGuard},
     task::JoinSet,
 };
 
@@ -475,10 +475,10 @@ impl Mapping {
                             let mut sender = mqtt.publisher();
                             let mut data_subscription =
                                 state.subscribe(&spa, &mut self.jobs).await?;
-                            let mutex = Arc::new(Mutex::new(()));
-                            let mut first_state_sent = Some(mutex.clone().lock_owned().await);
+                            let mutex = Arc::new(Mutex::new(())).blocking_lock_owned();
                             let this_index = self.uninitialized.len();
-                            self.uninitialized.push(mutex);
+                            self.uninitialized.push(OwnedMutexGuard::mutex(&mutex).clone());
+                            let mut first_state_sent = Some(mutex);
                             self.jobs.spawn(async move {
                                 loop {
                                     let reported_value = data_subscription.borrow_and_update();
@@ -492,7 +492,8 @@ impl Mapping {
                                         )
                                         .await?;
                                     eprintln!("State for index {} sent, releasing lock", this_index);
-                                    drop(mem::take(&mut first_state_sent));
+                                    let lock: Option<OwnedMutexGuard<()>> = mem::take(&mut first_state_sent);
+                                    drop(lock);
                                     data_subscription.changed().await?;
                                 }
                             });
