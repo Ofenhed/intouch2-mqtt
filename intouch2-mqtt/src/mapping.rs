@@ -506,11 +506,13 @@ impl Mapping {
                     }
                     MqttType::Command { command } => {
                         let topic = next_topic(Topic::Set);
+                        eprintln!("Subscribing to {topic}");
                         mqtt.mqtt_subscribe(vec![SubscribeTopic {
                             topic_path: topic.clone(),
                             qos: QoS::AtMostOnce,
                         }])
                         .await?;
+                        eprintln!("Subscribed");
                         let mut receiver = mqtt.subscribe();
                         let spa_sender = spa.sender();
                         {
