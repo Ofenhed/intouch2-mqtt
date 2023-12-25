@@ -472,7 +472,9 @@ impl Mapping {
                             let mut data_subscription =
                                 state.subscribe(&spa, &mut self.jobs).await?;
                             let mutex = Arc::new(Mutex::new(()));
+                            eprintln!("Getting lock, should be trivial");
                             let mut uninitialized = Some(mutex.clone().lock_owned().await);
+                            eprintln!("Got lock");
                             self.uninitialized.push(mutex);
                             self.jobs.spawn(async move {
                                 loop {

@@ -498,10 +498,13 @@ async fn main() -> anyhow::Result<()> {
                     if args.verbose {
                         eprintln!("Configuring device mapping");
                     }
-                    for entity in &args.entities {
-                        mapping
-                            .add_generic(entity.unwrap().clone(), &*spa.read().await, &mut mqtt)
-                            .await?;
+                    {
+                        let spa = spa.read().await;
+                        for entity in &args.entities {
+                            mapping
+                                .add_generic(entity.unwrap().clone(), &*spa, &mut mqtt)
+                                .await?;
+                        }
                     }
                     if args.verbose {
                         eprintln!("Waiting for all states to be sent before notifying online");
