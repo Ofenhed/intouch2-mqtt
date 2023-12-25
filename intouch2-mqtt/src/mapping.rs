@@ -225,31 +225,23 @@ impl MappingType {
                 }
                 value @ MappingType::U8 { .. } => {
                     let subscribe = spa.subscribe(value.range().expect("U8 has a range")).await;
-                    let map = WatchMap::new(subscribe, |x: &Option<Box<[u8]>>| {
-                        x.as_ref()
-                            .map(|valid_data| {
-                                let array: &[u8; 1] = valid_data
-                                    .as_ref()
-                                    .try_into()
-                                    .expect("This value will always be 1 byte");
-                                serde_json::Value::Number(array[0].into())
-                            })
-                            .unwrap_or(serde_json::Value::Null)
+                    let map = WatchMap::new(subscribe, |valid_data: &Box<[u8]>| {
+                        let array: &[u8; 1] = valid_data
+                            .as_ref()
+                            .try_into()
+                            .expect("This value will always be 1 byte");
+                        serde_json::Value::Number(array[0].into())
                     });
                     Ok(to_return(map))
                 }
                 value @ MappingType::U16 { .. } => {
                     let subscribe = spa.subscribe(value.range().expect("U16 has a range")).await;
-                    let map = WatchMap::new(subscribe, |x: &Option<Box<[u8]>>| {
-                        x.as_ref()
-                            .map(|valid_data| {
-                                let array: &[u8; 2] = valid_data
-                                    .as_ref()
-                                    .try_into()
-                                    .expect("This value will always be 2 bytes");
-                                serde_json::Value::Number(u16::from_be_bytes(*array).into())
-                            })
-                            .unwrap_or(serde_json::Value::Null)
+                    let map = WatchMap::new(subscribe, |valid_data: &Box<[u8]>| {
+                        let array: &[u8; 2] = valid_data
+                            .as_ref()
+                            .try_into()
+                            .expect("This value will always be 2 bytes");
+                        serde_json::Value::Number(u16::from_be_bytes(*array).into())
                     });
                     Ok(to_return(map))
                 }
@@ -257,17 +249,13 @@ impl MappingType {
                     let subscribe = spa
                         .subscribe(value.range().expect("Array has a range"))
                         .await;
-                    let map = WatchMap::new(subscribe, |x: &Option<Box<[u8]>>| {
-                        x.as_ref()
-                            .map(|valid_data| {
-                                serde_json::Value::Array(
-                                    valid_data
-                                        .iter()
-                                        .map(|element| serde_json::Value::Number((*element).into()))
-                                        .collect(),
-                                )
-                            })
-                            .unwrap_or(serde_json::Value::Null)
+                    let map = WatchMap::new(subscribe, |valid_data: &Box<[u8]>| {
+                        serde_json::Value::Array(
+                            valid_data
+                                .iter()
+                                .map(|element| serde_json::Value::Number((*element).into()))
+                                .collect(),
+                        )
                     });
                     Ok(to_return(map))
                 }

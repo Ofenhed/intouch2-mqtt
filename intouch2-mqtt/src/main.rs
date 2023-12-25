@@ -384,64 +384,6 @@ async fn main() -> anyhow::Result<()> {
     };
     match (mqtt, &mut spa, &args.memory_changes_mqtt_topic) {
         (Some(mut mqtt), Some(ref mut spa), memory_change_topic) => {
-            if let Some(memory_change_topic) = memory_change_topic {
-                let mut mqtt_sender = mqtt.sender();
-                let len = spa.len().await;
-                let mut spa_data = spa.subscribe(0..len).await;
-                let memory_change_topic =
-                    PathBuf::from(args.mqtt_base_topic.as_ref()).join(memory_change_topic.as_ref());
-                join_set.spawn(async move {
-                    let mut previous: Box<[u8]> = loop {
-                        {
-                            let borrowed = spa_data.borrow_and_update();
-                            if let Some(valid_data) = borrowed.as_deref() {
-                                break valid_data.into();
-                            }
-                        }
-                        spa_data.changed().await?;
-                    };
-
-                    let mut differences = Vec::with_capacity(len);
-                    loop {
-                        differences.clear();
-                        {
-                            spa_data.changed().await?;
-                            let data = spa_data.borrow_and_update();
-                            let Some(data) = data.as_deref() else {
-                                continue;
-                            };
-                            for i in 0..len {
-                                if previous[i] != data[i] {
-                                    differences.push((i, data[i]));
-                                }
-                            }
-                            previous = data.as_ref().into();
-                        }
-                        for (position, value) in differences.iter() {
-                            let payload = format!("{value}");
-                            let topic_name = memory_change_topic.join(format!("{position}"));
-                            let package = mqttrs::Packet::Publish(mqttrs::Publish {
-                                dup: false,
-                                qospid: mqttrs::QosPid::AtMostOnce,
-                                retain: false,
-                                topic_name: topic_name
-                                    .to_str()
-                                    .expect("All paths will be valid UTF-8"),
-                                payload: payload.as_bytes(),
-                            });
-                            mqtt_sender.send(&package).await?;
-                        }
-                        #[cfg(debug_assertions)]
-                        if args.verbose {
-                            let differences: String = differences
-                                .iter()
-                                .map(|(i, d)| format!("{i}: {d}, "))
-                                .collect();
-                            println!("Differences: {}", differences);
-                        }
-                    }
-                });
-            }
             let (spa_name, spa_version) = {
                 let spa_name = String::from_utf8_lossy(spa.name()).to_string();
                 let spa_version = {
@@ -480,6 +422,53 @@ async fn main() -> anyhow::Result<()> {
             }
             if args.verbose {
                 eprintln!("Memory dump received");
+            }
+            if let Some(memory_change_topic) = memory_change_topic {
+                let mut mqtt_sender = mqtt.sender();
+                let len = spa.len().await;
+                let mut spa_data = spa.subscribe(0..len).await;
+                let memory_change_topic =
+                    PathBuf::from(args.mqtt_base_topic.as_ref()).join(memory_change_topic.as_ref());
+                join_set.spawn(async move {
+                    let mut previous: Box<[u8]> = Box::from(spa_data.borrow_and_update().as_ref());
+
+                    let mut differences = Vec::with_capacity(len);
+                    loop {
+                        differences.clear();
+                        {
+                            spa_data.changed().await?;
+                            let data = spa_data.borrow_and_update();
+                            for i in 0..len {
+                                if previous[i] != data[i] {
+                                    differences.push((i, data[i]));
+                                }
+                            }
+                            previous = data.as_ref().into();
+                        }
+                        for (position, value) in differences.iter() {
+                            let payload = format!("{value}");
+                            let topic_name = memory_change_topic.join(format!("{position}"));
+                            let package = mqttrs::Packet::Publish(mqttrs::Publish {
+                                dup: false,
+                                qospid: mqttrs::QosPid::AtMostOnce,
+                                retain: false,
+                                topic_name: topic_name
+                                    .to_str()
+                                    .expect("All paths will be valid UTF-8"),
+                                payload: payload.as_bytes(),
+                            });
+                            mqtt_sender.send(&package).await?;
+                        }
+                        #[cfg(debug_assertions)]
+                        if args.verbose {
+                            let differences: String = differences
+                                .iter()
+                                .map(|(i, d)| format!("{i}: {d}, "))
+                                .collect();
+                            println!("Differences: {}", differences);
+                        }
+                    }
+                });
             }
             let mut mapping = Mapping::new(home_assistant::ConfigureDevice {
                 identifiers: Box::from([args.spa_id.clone()]),

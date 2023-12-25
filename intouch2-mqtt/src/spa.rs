@@ -36,8 +36,7 @@ pub struct SpaConnection {
     state: Arc<sync::Mutex<GeckoDatas>>,
     state_valid: Arc<sync::watch::Sender<bool>>,
     jobs: Option<Mutex<JoinSet<Result<(), SpaError>>>>,
-    state_subscribers:
-        Arc<sync::Mutex<HashMap<Range<usize>, sync::watch::Sender<Option<Box<[u8]>>>>>>,
+    state_subscribers: Arc<sync::Mutex<HashMap<Range<usize>, sync::watch::Sender<Box<[u8]>>>>>,
     commanders: Arc<sync::Mutex<sync::mpsc::Receiver<SpaCommand>>>,
     new_commander: Arc<sync::mpsc::Sender<SpaCommand>>,
     seq: Arc<AtomicU8>,
@@ -95,7 +94,7 @@ pub enum SpaCommand {
 }
 
 impl SpaConnection {
-    pub async fn subscribe(&self, index: Range<usize>) -> sync::watch::Receiver<Option<Box<[u8]>>> {
+    pub async fn subscribe(&self, index: Range<usize>) -> sync::watch::Receiver<Box<[u8]>> {
         let mut subscribers = self.state_subscribers.lock().await;
         match subscribers.entry(index) {
             std::collections::hash_map::Entry::Occupied(subscribers) => {
@@ -103,11 +102,7 @@ impl SpaConnection {
             }
             std::collections::hash_map::Entry::Vacant(new) => {
                 let state = self.state.lock().await;
-                let current_value = if *self.state_valid.borrow() {
-                    Some(state.index(new.key().clone()).into())
-                } else {
-                    None
-                };
+                let current_value = state.index(new.key().clone()).into();
                 new.insert(sync::watch::Sender::new(current_value))
                     .subscribe()
             }
@@ -288,12 +283,8 @@ impl SpaConnection {
                             {
                                 let data = gecko_datas.index(range.clone());
                                 subscriber.send_if_modified(|old_data| match old_data {
-                                    Some(old_data) if data != old_data.as_ref() => {
+                                    old_data if data != old_data.as_ref() => {
                                         old_data.copy_from_slice(data);
-                                        true
-                                    }
-                                    empty @ None => {
-                                        *empty = Some(Box::from(data));
                                         true
                                     }
                                     _ => false,
