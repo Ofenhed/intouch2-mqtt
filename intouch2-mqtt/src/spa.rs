@@ -230,8 +230,13 @@ impl SpaConnection {
         let Some(ref mut jobs) = self.jobs else {
             return Err(SpaError::NotInitialized);
         };
-        if let Some(result) = jobs.join_next().await {
-            let _: () = result??;
+        select! {
+            result = jobs.join_next(), if !jobs.is_empty() => {
+                if let Some(result) = result {
+                    let _: () = result??;
+                }
+            },
+            _ = time::sleep(time::Duration::from_millis(100)) => {},
         }
         Ok(())
     }
