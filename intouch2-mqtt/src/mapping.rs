@@ -438,6 +438,7 @@ impl Mapping {
         mqtt: &mut MqttSession,
     ) -> Result<(), MappingError> {
         let config_topic = mqtt.topic(&mapping.mqtt_type, &mapping.unique_id, Topic::Config);
+        eprintln!("Configuring {config_topic}");
         let mut counter = 0;
         let topics = mqtt.topic_generator();
         let GenericMapping {
