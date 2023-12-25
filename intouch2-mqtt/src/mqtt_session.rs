@@ -335,7 +335,7 @@ impl Session {
                         self.stream.write(send.as_ref()).await?;
                     }
                 },
-                job_result = self.jobs.join_next() => {
+                job_result = self.jobs.join_next(), if !self.jobs.is_empty() => {
                     if let Some(job_result) = job_result {
                         let _: () = job_result??;
                     }
