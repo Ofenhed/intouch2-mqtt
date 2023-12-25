@@ -1,9 +1,10 @@
-use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
+use std::{collections::HashMap, future::Future, mem, pin::Pin, sync::Arc};
 
 use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
 use serde::Deserialize;
 use tokio::{
-    sync::{mpsc, watch, RwLock},
+    select,
+    sync::{mpsc, watch, Mutex, RwLock},
     task::JoinSet,
 };
 
@@ -78,6 +79,7 @@ pub enum MappingError {
 pub struct Mapping {
     device: home_assistant::ConfigureDevice,
     jobs: JoinSet<Result<(), MappingError>>,
+    uninitialized: Vec<Arc<Mutex<()>>>,
 }
 
 #[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -166,6 +168,7 @@ impl MappingType {
     ) -> Pin<
         Box<
             dyn Future<Output = Result<Box<dyn GenericWatchMap<serde_json::Value>>, MappingError>>
+                + Send
                 + 'a,
         >,
     > {
@@ -409,6 +412,25 @@ impl GenericMapping {
 }
 
 impl Mapping {
+    pub async fn reset(&mut self) {
+        self.jobs.shutdown().await;
+        self.uninitialized = vec![];
+    }
+
+    pub async fn init(&mut self) -> Result<(), MappingError> {
+        while let Some(lock) = self.uninitialized.last().map(<Arc<_> as Clone>::clone) {
+            select! {
+                _ = lock.lock() => {}
+                tick_result = self.tick() => {
+                    let _: () = tick_result?;
+                    continue;
+                }
+            }
+            self.uninitialized.pop();
+        }
+        Ok(())
+    }
+
     pub async fn add_generic(
         &mut self,
         mapping: GenericMapping,
@@ -452,6 +474,9 @@ impl Mapping {
                             let mut data_subscription =
                                 state.subscribe(&spa, &mut self.jobs).await?;
                             let mqtt_config_complete = mqtt_waiter.clone();
+                            let mutex = Arc::new(Mutex::new(()));
+                            let mut uninitialized = Some(mutex.clone().lock_owned().await);
+                            self.uninitialized.push(mutex);
                             self.jobs.spawn(async move {
                                 mqtt_config_complete.read_owned().await;
                                 loop {
@@ -467,6 +492,7 @@ impl Mapping {
                                                 payload: &payload,
                                             });
                                             sender.send(&package).await?;
+                                            drop(mem::take(&mut uninitialized));
                                         }
                                     }
                                     data_subscription.changed().await?;
@@ -571,6 +597,10 @@ impl Mapping {
 impl Mapping {
     pub fn new(device: home_assistant::ConfigureDevice) -> Result<Self, MappingError> {
         let jobs = JoinSet::new();
-        Ok(Self { jobs, device })
+        Ok(Self {
+            jobs,
+            device,
+            uninitialized: vec![],
+        })
     }
 }

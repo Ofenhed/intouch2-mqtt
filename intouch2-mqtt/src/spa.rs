@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     ops::{Index, Range},
     sync::{
-        atomic::{AtomicBool, AtomicU8, Ordering},
+        atomic::{AtomicU8, Ordering},
         Arc,
     },
     time::Duration,
@@ -34,7 +34,8 @@ pub struct SpaConnection {
     get_watercare_mode_interval: Arc<Mutex<time::Interval>>,
     full_state_download_interval: Arc<Mutex<time::Interval>>,
     state: Arc<sync::Mutex<GeckoDatas>>,
-    state_valid: Arc<AtomicBool>,
+    state_valid: Arc<sync::watch::Sender<bool>>,
+    jobs: Option<JoinSet<Result<(), SpaError>>>,
     state_subscribers:
         Arc<sync::Mutex<HashMap<Range<usize>, sync::watch::Sender<Option<Box<[u8]>>>>>>,
     commanders: Arc<sync::Mutex<sync::mpsc::Receiver<SpaCommand>>>,
@@ -59,12 +60,18 @@ pub enum SpaError {
     PipeReceiveFailed(#[from] tokio::sync::broadcast::error::RecvError),
     #[error("Spa keypress pipe error: {0}")]
     KeypressSendFailed(#[from] tokio::sync::broadcast::error::SendError<u8>),
+    #[error("Internal watch recv error: {0}")]
+    WatchFailed(#[from] tokio::sync::watch::error::RecvError),
+    #[error("Internal watch send error: {0}")]
+    SendWatchFailed(#[from] tokio::sync::watch::error::SendError<bool>),
     #[error("Runtime error: {0}")]
     JoinError(#[from] tokio::task::JoinError),
     #[error("Invalid data received: {0}")]
     InvalidData(&'static str),
     #[error("Deadlock: {0}")]
     Deadlock(&'static str),
+    #[error("Spa object not initialized")]
+    NotInitialized,
 }
 
 impl WithBuffer for SpaConnection {
@@ -96,7 +103,7 @@ impl SpaConnection {
             }
             std::collections::hash_map::Entry::Vacant(new) => {
                 let state = self.state.lock().await;
-                let current_value = if self.state_valid.load(Ordering::Acquire) {
+                let current_value = if *self.state_valid.borrow() {
                     Some(state.index(new.key().clone()).into())
                 } else {
                     None
@@ -189,10 +196,11 @@ impl SpaConnection {
                         name: name.into(),
                         pipe: pipe.into(),
                         src,
+                        jobs: None,
                         dst,
                         version,
                         new_commander: new_commander.into(),
-                        state_valid: Arc::new(false.into()),
+                        state_valid: tokio::sync::watch::Sender::new(false).into(),
                         commanders: Mutex::new(commanders).into(),
                         watercare_mode: Mutex::new(sync::watch::Sender::new(None)).into(),
                         ping_interval: Mutex::new(ping_interval).into(),
@@ -218,21 +226,46 @@ impl SpaConnection {
         (*self.new_commander).clone()
     }
 
-    pub async fn run<'a>(&self) -> Result<(), SpaError> {
-        let notify_dirty = Arc::new(tokio::sync::Notify::new());
+    pub async fn tick(&mut self) -> Result<(), SpaError> {
+        let Some(ref mut jobs) = self.jobs else {
+            return Err(SpaError::NotInitialized);
+        };
+        if let Some(result) = jobs.join_next().await {
+            let _: () = result??;
+        }
+        Ok(())
+    }
+
+    pub async fn wait_for_valid_data(&mut self) -> Result<(), SpaError> {
+        let mut subscriber = self.state_valid.subscribe();
+        loop {
+            if *subscriber.borrow_and_update() {
+                return Ok(());
+            }
+            select! {
+                tick_result = self.tick() => {
+                    let _: () = tick_result?;
+                }
+                state_valid = subscriber.changed() => {
+                    let _: () = state_valid?;
+                }
+            }
+        }
+    }
+
+    pub async fn init(&mut self) -> Result<(), SpaError> {
         let gecko_data_len = u16::try_from(self.state.lock().await.len()).expect(
             "If this isn't u16, then the data types are incorrect, and we should not keep going",
         );
         let mut jobs = JoinSet::new();
         {
-            let notifier = notify_dirty.clone();
             let gecko_datas = self.state.clone();
             let subscribers = self.state_subscribers.clone();
-            let state_valid = self.state_valid.clone();
+            let mut state_valid = self.state_valid.subscribe();
             jobs.spawn(async move {
                 loop {
-                    notifier.notified().await;
-                    if !state_valid.load(Ordering::Acquire) {
+                    if !*state_valid.borrow_and_update() {
+                        state_valid.changed().await?;
                         continue;
                     }
                     let mut gecko_datas = gecko_datas.lock().await;
@@ -402,7 +435,6 @@ impl SpaConnection {
             let dst = self.dst.clone();
             let seq = self.seq.clone();
             let gecko_data = self.state.clone();
-            let notify_dirty = notify_dirty.clone();
             let mut state_valid = Some(self.state_valid.clone());
             jobs.spawn(async move {
                 loop {
@@ -459,9 +491,8 @@ impl SpaConnection {
                         }
                     }
                     if let Some(state_valid) = std::mem::take(&mut state_valid) {
-                        state_valid.store(true, Ordering::Release);
+                        state_valid.send(true)?;
                     }
-                    notify_dirty.notify_waiters();
                     interval.lock().await.reset();
                 }
             });
@@ -472,7 +503,6 @@ impl SpaConnection {
             let my_id = self.src.clone();
             let tx = self.pipe.tx.clone();
             let seq = self.seq.clone();
-            let notify_dirty = notify_dirty.clone();
             let gecko_data = self.state.clone();
             jobs.spawn(async move {
                 loop {
@@ -492,7 +522,6 @@ impl SpaConnection {
                             let pos = usize::from(pos);
                             let old_data: &mut [u8] = &mut data[pos..pos + new_data.len()];
                             old_data.copy_from_slice(new_data.as_ref());
-                            notify_dirty.notify_waiters();
                         }
                         NetworkPackage::Addressed {
                             data:
@@ -529,16 +558,13 @@ impl SpaConnection {
                                 let old_data: &mut [u8] = &mut data[pos..pos + 2];
                                 old_data.copy_from_slice(new_data.as_ref());
                             }
-                            notify_dirty.notify_waiters();
                         }
                         _ => (),
                     }
                 }
             });
         }
-        while let Some(job) = jobs.join_next().await {
-            job??;
-        }
+        self.jobs = Some(jobs);
         Ok(())
     }
 }
