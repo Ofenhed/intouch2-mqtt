@@ -89,6 +89,7 @@ pub struct Mapping {
     device: home_assistant::ConfigureDevice,
     jobs: JoinSet<Result<(), MappingError>>,
     uninitialized: Vec<Arc<Mutex<()>>>,
+    active: sync::watch::Sender<bool>,
 }
 
 #[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -411,9 +412,11 @@ impl Mapping {
     pub async fn reset(&mut self) {
         self.jobs.shutdown().await;
         self.uninitialized = vec![];
+        self.active.send_replace(false);
     }
 
-    pub async fn init(&mut self, mqtt: &mut MqttSession) -> Result<(), MappingError> {
+    pub async fn start(&mut self, mqtt: &mut MqttSession) -> Result<(), MappingError> {
+        self.active.send_replace(true);
         while let Some(lock) = self.uninitialized.last().map(<Arc<_> as Clone>::clone) {
             let mut acquire_lock = pin!(lock.lock_owned());
             loop {
@@ -455,7 +458,6 @@ impl Mapping {
             counter += 1;
             topics.topic(&mqtt_type, &format!("{unique_id}/{counter}"), topic)
         };
-        let initialized = sync::watch::Sender::new(false);
         let next_qos = {
             let publisher = mqtt.publisher();
             move || match qos {
@@ -486,7 +488,7 @@ impl Mapping {
                             let mut sender = mqtt.publisher();
                             let mut data_subscription =
                                 state.subscribe(&spa, &mut self.jobs).await?;
-                            let mut initialized = initialized.subscribe();
+                            let mut initialized = self.active.subscribe();
                             let mutex = Arc::new(Mutex::new(())).try_lock_owned().expect(
                                 "This mutex was just created, the lock should be guaranteed",
                             );
@@ -607,7 +609,6 @@ impl Mapping {
                 }
             }
         }
-        initialized.send_replace(true);
         Ok(())
     }
 
@@ -631,6 +632,7 @@ impl Mapping {
             jobs,
             device,
             uninitialized: vec![],
+            active: sync::watch::Sender::new(false),
         })
     }
 }
