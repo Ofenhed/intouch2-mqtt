@@ -14,7 +14,6 @@ use std::{
     collections::VecDeque,
     net::IpAddr,
     path::{Path, PathBuf},
-    pin::pin,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -25,7 +24,7 @@ use tokio::{
     net::{self},
     select,
     task::JoinSet,
-    time::{timeout, Instant},
+    time::timeout,
 };
 
 mod default_values {
@@ -56,17 +55,6 @@ mod default_values {
 
     pub fn r#false() -> bool {
         false
-    }
-
-    pub fn configure_sleep_duration() -> f32 {
-        1.0
-    }
-}
-
-mod clap_parsers {
-    pub fn parse_duration(value: &str) -> Result<tokio::time::Duration, std::num::ParseFloatError> {
-        let seconds = value.parse()?;
-        Ok(tokio::time::Duration::from_secs_f32(seconds))
     }
 }
 
@@ -177,12 +165,6 @@ struct Command {
     #[arg(long)]
     #[serde(default)]
     mqtt_availability_topic: Option<Arc<str>>,
-
-    /// The amount of time to sleep after sending configure packages before sending the state
-    /// packages.
-    #[arg(long, default_value = "1.0")]
-    #[serde(default = "default_values::configure_sleep_duration")]
-    sleep_after_mqtt_configuration: f32,
 
     /// Set this to dump memory changes to the specified MQTT topic as
     /// "{mqtt_base_topic}/{package_dump_mqtt_topic}/{client_id}".
@@ -512,20 +494,6 @@ async fn main() -> anyhow::Result<()> {
                     }
                     if args.verbose {
                         eprintln!("Waiting for all states to be sent before notifying online");
-                    }
-                    let mut setup_wait = pin!(tokio::time::sleep_until(Instant::now() + Duration::from_secs_f32(args.sleep_after_mqtt_configuration)));
-                    loop {
-                        select! {
-                            _ = &mut setup_wait => {
-                                break
-                            }
-                            spa_result = spa.tick() => {
-                                let _: () = spa_result?;
-                            }
-                            mqtt_result = mqtt.tick() => {
-                                let _: () = mqtt_result?;
-                            }
-                        }
                     }
                     mapping.init(&mut mqtt).await?;
                     if args.verbose {

@@ -11,7 +11,7 @@ use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
 use serde::Deserialize;
 use tokio::{
     select,
-    sync::{mpsc, watch, Mutex, OwnedMutexGuard},
+    sync::{mpsc, watch, Mutex, OwnedMutexGuard, self},
     task::JoinSet,
 };
 
@@ -453,6 +453,7 @@ impl Mapping {
             counter += 1;
             topics.topic(&mqtt_type, &format!("{unique_id}/{counter}"), topic)
         };
+        let initialized = sync::watch::Sender::new(false);
         let next_qos = {
             let publisher = mqtt.publisher();
             move || match qos {
@@ -483,6 +484,7 @@ impl Mapping {
                             let mut sender = mqtt.publisher();
                             let mut data_subscription =
                                 state.subscribe(&spa, &mut self.jobs).await?;
+                            let mut initialized = initialized.subscribe();
                             let mutex = Arc::new(Mutex::new(())).try_lock_owned().expect(
                                 "This mutex was just created, the lock should be guaranteed",
                             );
@@ -491,6 +493,12 @@ impl Mapping {
                             let mut first_state_sent = Some(mutex);
                             let next_qos = next_qos.clone();
                             self.jobs.spawn(async move {
+                                loop {
+                                    if *initialized.borrow_and_update() {
+                                        break
+                                    }
+                                    initialized.changed().await?;
+                                }
                                 loop {
                                     let reported_value = data_subscription.borrow_and_update();
                                     let payload = serde_json::to_vec(&reported_value)?;
@@ -593,6 +601,7 @@ impl Mapping {
                 }
             }
         }
+        initialized.send_replace(true);
         Ok(())
     }
 
