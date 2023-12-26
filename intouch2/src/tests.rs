@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use super::{composer::*, object::*, parser::*};
 
 #[test]
@@ -24,7 +26,7 @@ fn parse_new_ping() {
     ));
     assert!(matches!(
     NetworkPackageData::parse(b"PUNG"),
-    Ok(package) if package == (&[], package_data::Unknown(b"PUNG").into())
+    Ok(package) if package == (&[], package_data::Unknown(Cow::Borrowed(b"PUNG")).into())
     ));
 }
 
@@ -110,12 +112,12 @@ fn id_packets() {
         NetworkPackage::Addressed {
             src: None,
             dst: None,
-            data: package_data::GetVersion.into(),
+            data: package_data::GetVersion { seq: 0 }.into(),
         },
         NetworkPackage::Addressed {
             src: None,
             dst: None,
-            data: package_data::Version(b"some_version".as_slice().into()).into(),
+            data: package_data::Version { en_build: 1, en_major: 2, en_minor: 3, co_build: 4, co_major: 5, co_minor: 6 }.into(),
         },
         // NetworkPackage::Authorized{src: None, dst: None, data: package_data::PushStatus(b"Some
         // status".as_slice().into())},
