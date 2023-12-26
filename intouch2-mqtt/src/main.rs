@@ -150,16 +150,16 @@ struct Command {
 
     #[arg(
         short = 'u',
-        requires("mqtt-password"),
-        requires("mqtt-target"),
+        requires("mqtt_password"),
+        requires("mqtt_target"),
         env("MQTT_USER")
     )]
     mqtt_username: Option<Arc<str>>,
 
     #[arg(
         short = 'p',
-        requires("mqtt-username"),
-        requires("mqtt-target"),
+        requires("mqtt_username"),
+        requires("mqtt_target"),
         env("MQTT_PASSWORD")
     )]
     mqtt_password: Option<Arc<str>>,
