@@ -15,6 +15,7 @@ pub struct ConfigureBase<'a> {
     pub name: &'a str,
     pub unique_id: &'a str,
     pub device: &'a ConfigureDevice,
+    pub qos: u8,
 }
 
 #[derive(serde::Serialize)]

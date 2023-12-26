@@ -337,6 +337,8 @@ pub struct GenericMapping {
     pub mqtt_type: &'static str,
     pub name: &'static str,
     pub unique_id: &'static str,
+    #[serde(default)]
+    pub qos: u8,
     #[serde(flatten)]
     pub mqtt_values: HashMap<&'static str, MqttType>,
 }
@@ -445,10 +447,19 @@ impl Mapping {
             name: mqtt_name,
             unique_id,
             mqtt_values,
+            qos,
         } = mapping;
         let mut next_topic = |topic: Topic| {
             counter += 1;
             topics.topic(&mqtt_type, &format!("{unique_id}/{counter}"), topic)
+        };
+        let next_qos = {
+            let publisher = mqtt.publisher();
+            move || match qos {
+                1 => QosPid::AtLeastOnce(publisher.next_pid()),
+                2 => QosPid::ExactlyOnce(publisher.next_pid()),
+                _ => QosPid::AtMostOnce,
+            }
         };
 
         let device = self.device.clone();
@@ -458,6 +469,7 @@ impl Mapping {
                     name: &mqtt_name,
                     unique_id: &unique_id,
                     device: &device,
+                    qos,
                 },
                 args: Default::default(),
             };
@@ -477,16 +489,13 @@ impl Mapping {
                             self.uninitialized
                                 .push(OwnedMutexGuard::mutex(&mutex).clone());
                             let mut first_state_sent = Some(mutex);
+                            let next_qos = next_qos.clone();
                             self.jobs.spawn(async move {
                                 loop {
                                     let reported_value = data_subscription.borrow_and_update();
                                     let payload = serde_json::to_vec(&reported_value)?;
                                     sender
-                                        .publish(
-                                            Path::new(&topic),
-                                            QosPid::AtLeastOnce(sender.next_pid()),
-                                            payload,
-                                        )
+                                        .publish(Path::new(&topic), next_qos(), payload)
                                         .await?;
                                     let lock: Option<OwnedMutexGuard<()>> =
                                         mem::take(&mut first_state_sent);
@@ -571,11 +580,8 @@ impl Mapping {
             serde_json::to_vec(&config)?
         };
         let mut publisher = mqtt.publisher();
-        let mut publish = pin!(publisher.publish(
-            Path::new(&config_topic),
-            QosPid::AtLeastOnce(mqtt.next_pid()),
-            json_config,
-        ));
+        let mut publish =
+            pin!(publisher.publish(Path::new(&config_topic), next_qos(), json_config,));
         loop {
             select! {
                 publish_result = &mut publish => {
