@@ -117,7 +117,15 @@ fn id_packets() {
         NetworkPackage::Addressed {
             src: None,
             dst: None,
-            data: package_data::Version { en_build: 1, en_major: 2, en_minor: 3, co_build: 4, co_major: 5, co_minor: 6 }.into(),
+            data: package_data::Version {
+                en_build: 1,
+                en_major: 2,
+                en_minor: 3,
+                co_build: 4,
+                co_major: 5,
+                co_minor: 6,
+            }
+            .into(),
         },
         // NetworkPackage::Authorized{src: None, dst: None, data: package_data::PushStatus(b"Some
         // status".as_slice().into())},
