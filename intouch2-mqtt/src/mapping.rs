@@ -11,7 +11,7 @@ use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
 use serde::Deserialize;
 use tokio::{
     select,
-    sync::{mpsc, watch, Mutex, OwnedMutexGuard, self},
+    sync::{self, mpsc, watch, Mutex, OwnedMutexGuard},
     task::JoinSet,
 };
 
@@ -81,6 +81,8 @@ pub enum MappingError {
     WatchChanged(#[from] watch::error::RecvError),
     #[error("Data channel unexpectedly closed: {0}")]
     ChannelClosed(&'static str),
+    #[error("No job can be performed, because initialization failed")]
+    PublisherDeadlockedByFailedInitialization,
 }
 
 pub struct Mapping {
@@ -497,7 +499,11 @@ impl Mapping {
                                     if *initialized.borrow_and_update() {
                                         break
                                     }
-                                    initialized.changed().await?;
+                                    if initialized.changed().await.is_err() {
+                                        if !*initialized.borrow_and_update() {
+                                            return Err(MappingError::PublisherDeadlockedByFailedInitialization);
+                                        }
+                                    }
                                 }
                                 loop {
                                     let reported_value = data_subscription.borrow_and_update();
