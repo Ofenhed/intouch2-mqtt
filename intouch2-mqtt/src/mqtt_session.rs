@@ -279,7 +279,7 @@ impl Session {
         let encoded_len = encode_slice(&packet, self.buffer.as_mut())?;
         let sleep_duration = self.publish_timeout / self.publish_retries.into();
         for _ in 0..usize::from(self.publish_retries) {
-            self.stream.write(&self.buffer[..encoded_len]).await?;
+            self.stream.write_all(&self.buffer[..encoded_len]).await?;
             'keep_waiting: loop {
                 select! {
                     _ = tokio::time::sleep(sleep_duration) => {
@@ -329,7 +329,7 @@ impl Session {
                         Packet::Pingreq => {
                             let response = Packet::Pingresp;
                             let len = encode_slice(&response, self.buffer.as_mut())?;
-                            self.stream.write(&self.buffer[..len]).await?;
+                            self.stream.write_all(&self.buffer[..len]).await?;
                             continue;
                         },
                         Packet::Pingresp => continue,
@@ -342,11 +342,11 @@ impl Session {
                 _ = self.ping_interval.tick() => {
                     let response = Packet::Pingreq;
                     let len = encode_slice(&response, self.buffer.as_mut())?;
-                    self.stream.write(&self.buffer[..len]).await?;
+                    self.stream.write_all(&self.buffer[..len]).await?;
                 },
                 to_send = self.send_queue.recv() => {
                     if let Some(send) = to_send {
-                        self.stream.write(send.as_ref()).await?;
+                        self.stream.write_all(send.as_ref()).await?;
                     }
                 },
                 job_result = self.jobs.join_next(), if !self.jobs.is_empty() => {
@@ -358,62 +358,75 @@ impl Session {
                     if let Some(PublishQueueEntry { topic, payload, qospid: pid, response }) = to_publish {
                         let publish_retries = self.publish_retries;
                         let publish_timeout = self.publish_timeout;
-                        let mut sender = self.sender();
-                        let mut receiver = self.subscribe();
-                        self.jobs.spawn(async move {
-                            let timeout = match pid {
-                                QosPid::AtMostOnce => time::Duration::ZERO,
-                                QosPid::AtLeastOnce(_) => publish_timeout / publish_retries.into(),
-                                QosPid::ExactlyOnce(_) => publish_timeout,
-                            };
-                            let mut real_timeout = pin!(tokio::time::sleep_until((std::time::Instant::now() + publish_timeout).into()));
-                            for attempt in 0 ..= usize::from(publish_retries) {
-                                let topic_name = topic.display().to_string();
-                                let packet = Packet::Publish(Publish { dup: attempt != 0, qospid: pid, retain: false, topic_name: &topic_name, payload: &payload });
-                                sender.send(&packet).await?;
-                                let mut timeout = pin!(tokio::time::sleep(timeout));
-                                'keep_waiting: loop {
-                                    match pid {
-                                        QosPid::AtMostOnce => {
-                                            response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
-                                            return Ok(())
+                        let topic_name = topic.display().to_string();
+                        if matches!(pid, QosPid::AtMostOnce) {
+                            let packet = Packet::Publish(Publish { dup: false, qospid: pid, retain: false, topic_name: &topic_name, payload: &payload });
+                            let len = encode_slice(&packet, self.buffer.as_mut())?;
+                            response.send(self.stream.write_all(&self.buffer[..len]).await.map_err(Into::into)).map_err(|_| MqttError::MqttPublishReply)?;
+                        } else {
+                            let mut sender = self.sender();
+                            let mut receiver = self.subscribe();
+                            self.jobs.spawn(async move {
+                                let timeout = match pid {
+                                    QosPid::AtMostOnce => time::Duration::ZERO,
+                                    QosPid::AtLeastOnce(_) => publish_timeout / publish_retries.into(),
+                                    QosPid::ExactlyOnce(_) => publish_timeout,
+                                };
+                                let mut real_timeout = pin!(tokio::time::sleep_until((std::time::Instant::now() + publish_timeout).into()));
+                                for attempt in 0 ..= usize::from(publish_retries) {
+                                    let packet = Packet::Publish(Publish { dup: attempt != 0, qospid: pid, retain: false, topic_name: &topic_name, payload: &payload });
+                                    if let Err(e) = sender.send(&packet).await {
+                                        response.send(Err(e)).map_err(|_| MqttError::MqttPublishReply)?;
+                                        return Ok(());
+                                    }
+                                    let mut timeout = pin!(tokio::time::sleep(timeout));
+                                    'keep_waiting: loop {
+                                        match pid {
+                                            QosPid::AtMostOnce => unreachable!(),
+                                            qos@QosPid::AtLeastOnce(pid) | qos@QosPid::ExactlyOnce(pid) => select! {
+                                                _ = &mut real_timeout => {
+                                                    response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
+                                                    return Ok(());
+                                                }
+                                                _ = &mut timeout => {
+                                                    match qos {
+                                                        QosPid::AtLeastOnce(_) => break 'keep_waiting,
+                                                        QosPid::ExactlyOnce(_) => {
+                                                            response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
+                                                            return Ok(());
+                                                        },
+                                                        QosPid::AtMostOnce => unreachable!(),
+                                                    }
+                                                }
+                                                package = receiver.recv() => {
+                                                    let package = match package {
+                                                        Ok(package) => package,
+                                                        Err(e) => {
+                                                            response.send(Err(e.into())).map_err(|_| MqttError::MqttPublishReply)?;
+                                                            return Ok(())
+                                                        }
+                                                    };
+                                                    match package.packet {
+                                                        Packet::Puback(ack_pid) if ack_pid == pid => {
+                                                            response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
+                                                            return Ok(())
+                                                        }
+                                                        Packet::Pubrec(ack_pid) if ack_pid == pid => {
+                                                            sender.send(&Packet::Pubrel(ack_pid)).await?;
+                                                            response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
+                                                            return Ok(())
+                                                        }
+                                                        _ => (),
+                                                    }
+                                                }
+                                            },
                                         }
-                                        qos@QosPid::AtLeastOnce(pid) | qos@QosPid::ExactlyOnce(pid) => select! {
-                                            _ = &mut real_timeout => {
-                                                response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
-                                                return Ok(());
-                                            }
-                                            _ = &mut timeout => {
-                                                match qos {
-                                                    QosPid::AtLeastOnce(_) => break 'keep_waiting,
-                                                    QosPid::ExactlyOnce(_) => {
-                                                        response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
-                                                        return Ok(());
-                                                    },
-                                                    QosPid::AtMostOnce => unreachable!(),
-                                                }
-                                            }
-                                            package = receiver.recv() => {
-                                                match package?.packet {
-                                                    Packet::Puback(ack_pid) if ack_pid == pid => {
-                                                        response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
-                                                        return Ok(())
-                                                    }
-                                                    Packet::Pubrec(ack_pid) if ack_pid == pid => {
-                                                        sender.send(&Packet::Pubrel(ack_pid)).await?;
-                                                        response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
-                                                        return Ok(())
-                                                    }
-                                                    _ => (),
-                                                }
-                                            }
-                                        },
                                     }
                                 }
-                            }
-                            response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
-                            Ok(())
-                        });
+                                response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
+                                Ok(())
+                            });
+                        }
                     }
                 },
             }
@@ -449,7 +462,7 @@ impl Session {
 
     pub async fn send(&mut self, packet: &Packet<'_>) -> Result<(), MqttError> {
         let encoded_len = encode_slice(&packet, self.buffer.as_mut())?;
-        self.stream.write(&self.buffer[..encoded_len]).await?;
+        self.stream.write_all(&self.buffer[..encoded_len]).await?;
         Ok(())
     }
 }
@@ -487,7 +500,7 @@ impl SessionBuilder<'_> {
             SocketAddr::V6(_) => TcpSocket::new_v6()?,
         };
         let mut stream = connection.connect(self.target).await?;
-        stream.write(&buffer[..packet_len]).await?;
+        stream.write_all(&buffer[..packet_len]).await?;
         let bytes_read = stream.read(buffer.as_mut()).await?;
         let Some(response) = decode_slice(&buffer[..bytes_read])? else {
             return Err(MqttError::NotEnoughData(buffer[..bytes_read].into()))?;
