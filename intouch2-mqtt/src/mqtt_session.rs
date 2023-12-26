@@ -368,27 +368,27 @@ impl Session {
                             let mut receiver = self.subscribe();
                             self.jobs.spawn(async move {
                                 let timeout = match pid {
-                                    QosPid::AtMostOnce => time::Duration::ZERO,
+                                    QosPid::AtMostOnce => unreachable!(),
                                     QosPid::AtLeastOnce(_) => publish_timeout / publish_retries.into(),
                                     QosPid::ExactlyOnce(_) => publish_timeout,
                                 };
-                                let mut real_timeout = pin!(tokio::time::sleep_until((std::time::Instant::now() + publish_timeout).into()));
+                                let real_timeout = (std::time::Instant::now() + publish_timeout).into();
                                 for attempt in 0 ..= usize::from(publish_retries) {
                                     let packet = Packet::Publish(Publish { dup: attempt != 0, qospid: pid, retain: false, topic_name: &topic_name, payload: &payload });
                                     if let Err(e) = sender.send(&packet).await {
                                         response.send(Err(e)).map_err(|_| MqttError::MqttPublishReply)?;
                                         return Ok(());
                                     }
-                                    let mut timeout = pin!(tokio::time::sleep(timeout));
+                                    let timeout = (std::time::Instant::now() + timeout).into();
                                     'keep_waiting: loop {
                                         match pid {
                                             QosPid::AtMostOnce => unreachable!(),
                                             qos@QosPid::AtLeastOnce(pid) | qos@QosPid::ExactlyOnce(pid) => select! {
-                                                _ = &mut real_timeout => {
+                                                _ = tokio::time::sleep_until(real_timeout) => {
                                                     response.send(Err(MqttError::PublishTimeout)).map_err(|_| MqttError::MqttPublishReply)?;
                                                     return Ok(());
                                                 }
-                                                _ = &mut timeout => {
+                                                _ = tokio::time::sleep_until(timeout) => {
                                                     match qos {
                                                         QosPid::AtLeastOnce(_) => break 'keep_waiting,
                                                         QosPid::ExactlyOnce(_) => {
