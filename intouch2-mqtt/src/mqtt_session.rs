@@ -375,6 +375,7 @@ impl Session {
                                 'keep_waiting: loop {
                                     match pid {
                                         QosPid::AtMostOnce => {
+                                            response.send(Ok(())).map_err(|_| MqttError::MqttPublishReply)?;
                                             return Ok(())
                                         }
                                         qos@QosPid::AtLeastOnce(pid) | qos@QosPid::ExactlyOnce(pid) => select! {
