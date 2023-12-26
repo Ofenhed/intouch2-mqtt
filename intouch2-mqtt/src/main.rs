@@ -58,8 +58,8 @@ mod default_values {
         false
     }
 
-    pub fn configure_sleep_duration() -> Duration {
-        Duration::from_secs(1)
+    pub fn configure_sleep_duration() -> f32 {
+        1.0
     }
 }
 
@@ -180,9 +180,9 @@ struct Command {
 
     /// The amount of time to sleep after sending configure packages before sending the state
     /// packages.
-    #[arg(long, value_parser = clap_parsers::parse_duration, default_value = "1.0")]
+    #[arg(long, default_value = "1.0")]
     #[serde(default = "default_values::configure_sleep_duration")]
-    sleep_after_mqtt_configuration: Duration,
+    sleep_after_mqtt_configuration: f32,
 
     /// Set this to dump memory changes to the specified MQTT topic as
     /// "{mqtt_base_topic}/{package_dump_mqtt_topic}/{client_id}".
@@ -513,7 +513,7 @@ async fn main() -> anyhow::Result<()> {
                     if args.verbose {
                         eprintln!("Waiting for all states to be sent before notifying online");
                     }
-                    let mut setup_wait = pin!(tokio::time::sleep_until(Instant::now() + args.sleep_after_mqtt_configuration));
+                    let mut setup_wait = pin!(tokio::time::sleep_until(Instant::now() + Duration::from_secs_f32(args.sleep_after_mqtt_configuration)));
                     loop {
                         select! {
                             _ = &mut setup_wait => {
