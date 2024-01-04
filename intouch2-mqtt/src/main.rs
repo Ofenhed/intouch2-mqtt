@@ -8,12 +8,13 @@ use intouch2_mqtt::{
     port_forward::{FullPackagePipe, PortForwardBuilder, PortForwardError},
     spa::{SpaConnection, SpaError},
 };
+use mqttrs::SubscribeTopic;
 use serde_json::json;
 use std::{
     borrow::Cow,
     collections::VecDeque,
     net::IpAddr,
-    path::{Path, PathBuf},
+    path::PathBuf,
     pin::pin,
     sync::{Arc, OnceLock},
     time::Duration,
@@ -48,6 +49,10 @@ mod default_values {
 
     pub fn discovery_topic() -> Arc<str> {
         "homeassistant".into()
+    }
+
+    pub fn home_assistant_availability() -> Arc<str> {
+        "hass/status".into()
     }
 
     pub fn base_topic() -> Arc<str> {
@@ -160,11 +165,15 @@ struct Command {
     #[arg(default_value = "homeassistant")]
     mqtt_discovery_topic: Arc<str>,
 
+    #[serde(default = "default_values::home_assistant_availability")]
+    #[arg(default_value = "hass/status")]
+    mqtt_home_assistant_status_topic: Arc<str>,
+
     #[serde(default = "default_values::base_topic")]
     #[arg(default_value = "intouch2")]
     mqtt_base_topic: Arc<str>,
 
-    /// Set this to dump memory changes to the specified MQTT topic as
+    /// MQTT topic where availability messages will be sent as
     /// "{mqtt_base_topic}/{mqtt_availability_topic}".
     #[arg(long)]
     #[serde(default)]
@@ -486,9 +495,12 @@ async fn main() -> anyhow::Result<()> {
                 sw_version: Some(spa_version.into()),
                 extra_args: Default::default(),
             })?;
-            let home_assistant_availability_topic =
-                Path::new(&*args.mqtt_base_topic).join("status");
             let spa = spa.clone();
+            mqtt.mqtt_subscribe(&vec![SubscribeTopic {
+                topic_path: args.mqtt_home_assistant_status_topic.to_string(),
+                qos: mqttrs::QoS::AtMostOnce,
+            }])
+            .await?;
             join_set.spawn(async move {
                 let mut mqtt_subscription = mqtt.subscribe();
                 'send_config: loop {
@@ -538,7 +550,7 @@ async fn main() -> anyhow::Result<()> {
                             mqtt_package = mqtt_subscription.recv() => {
                                 match mqtt_package?.packet {
                                     mqttrs::Packet::Publish(mqttrs::Publish { dup: false, topic_name, payload, .. })
-                                        if Path::new(topic_name) == home_assistant_availability_topic && payload == b"online" => {
+                                        if topic_name == args.mqtt_home_assistant_status_topic.as_ref() && payload == b"online" => {
                                             if args.verbose {
                                                 eprintln!("Got online from home assistant. Restarting mapping.");
                                             }

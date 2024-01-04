@@ -270,11 +270,14 @@ impl Session {
         }
     }
 
-    pub async fn mqtt_subscribe(&mut self, topics: Vec<SubscribeTopic>) -> Result<(), MqttError> {
+    pub async fn mqtt_subscribe(
+        &mut self,
+        topics: impl AsRef<[SubscribeTopic]>,
+    ) -> Result<(), MqttError> {
         let subscribe_pid = self.next_pid();
         let packet = Packet::Subscribe(Subscribe {
             pid: subscribe_pid,
-            topics: topics.clone(),
+            topics: topics.as_ref().into(),
         });
         let encoded_len = encode_slice(&packet, self.buffer.as_mut())?;
         let sleep_duration = self.publish_timeout / self.publish_retries.into();
@@ -288,7 +291,7 @@ impl Session {
                     received = self.recv() => {
                         match &received?.packet {
                             Packet::Suback(Suback { pid, return_codes }) if pid == &subscribe_pid => {
-                                let failed: Box<_> = topics
+                                let failed: Box<_> = Vec::from(topics.as_ref())
                                     .into_iter()
                                     .zip(return_codes.into_iter())
                                     .filter_map(|(topic, return_code)| {
@@ -311,7 +314,7 @@ impl Session {
                 }
             }
         }
-        Err(MqttError::MqttSubscribeTimeout(topics.into()))
+        Err(MqttError::MqttSubscribeTimeout(topics.as_ref().into()))
     }
 
     pub async fn tick(&mut self) -> Result<(), MqttError> {
