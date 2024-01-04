@@ -536,9 +536,6 @@ async fn main() -> anyhow::Result<()> {
                         eprintln!("Notifying online");
                     }
                     mqtt.notify_online().await?;
-                    if args.verbose {
-                        eprintln!("Notified online");
-                    }
                     loop {
                         select! {
                             mapping_result = mapping.tick() => {

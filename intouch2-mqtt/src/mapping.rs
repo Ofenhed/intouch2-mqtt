@@ -411,6 +411,7 @@ impl GenericMapping {
 impl Mapping {
     pub async fn reset(&mut self) {
         self.jobs.shutdown().await;
+        self.jobs = JoinSet::new();
         self.uninitialized = vec![];
         self.active.send_replace(false);
     }
