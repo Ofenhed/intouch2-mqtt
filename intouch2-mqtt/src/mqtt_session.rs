@@ -339,7 +339,7 @@ impl Session {
                         _ => (),
                     }
                     let package = Arc::new(package);
-                    self.subscribers.send(package.clone()).map_err(|_| MqttError::ForwardToSubscribers)?;
+                    let _orphan_subscriptions_are_ok = self.subscribers.send(package.clone());
                     return Ok(package)
                 },
                 _ = self.ping_interval.tick() => {

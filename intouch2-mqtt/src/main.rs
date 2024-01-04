@@ -496,13 +496,13 @@ async fn main() -> anyhow::Result<()> {
                 extra_args: Default::default(),
             })?;
             let spa = spa.clone();
-            mqtt.mqtt_subscribe(&vec![SubscribeTopic {
-                topic_path: args.mqtt_home_assistant_status_topic.to_string(),
-                qos: mqttrs::QoS::AtMostOnce,
-            }])
-            .await?;
             join_set.spawn(async move {
                 let mut mqtt_subscription = mqtt.subscribe();
+                mqtt.mqtt_subscribe(&vec![SubscribeTopic {
+                    topic_path: args.mqtt_home_assistant_status_topic.to_string(),
+                    qos: mqttrs::QoS::AtMostOnce,
+                }])
+                .await?;
                 'send_config: loop {
                     if args.verbose {
                         eprintln!("Configuring device mapping");
