@@ -52,7 +52,7 @@ mod default_values {
     }
 
     pub fn home_assistant_availability() -> Arc<str> {
-        "hass/status".into()
+        "homeassistant/status".into()
     }
 
     pub fn base_topic() -> Arc<str> {
@@ -166,7 +166,7 @@ struct Command {
     mqtt_discovery_topic: Arc<str>,
 
     #[serde(default = "default_values::home_assistant_availability")]
-    #[arg(default_value = "hass/status")]
+    #[arg(default_value = "homeassistant/status")]
     mqtt_home_assistant_status_topic: Arc<str>,
 
     #[serde(default = "default_values::base_topic")]
