@@ -537,7 +537,7 @@ impl Mapping {
                             let command = command.clone();
                             self.jobs.spawn(async move {
                                 loop {
-                                    match (&command, &receiver.recv().await?.as_ref().packet) {
+                                    match (&command, &receiver.recv().await?.packet()) {
                                         (
                                             CommandMappingType::Special(SpecialMode::WatercareMode),
                                             Packet::Publish(Publish {

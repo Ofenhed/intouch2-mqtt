@@ -545,9 +545,9 @@ async fn main() -> anyhow::Result<()> {
                                 let _: () = mqtt_result?;
                             }
                             mqtt_package = mqtt_subscription.recv() => {
-                                match mqtt_package?.packet {
+                                match mqtt_package?.packet() {
                                     mqttrs::Packet::Publish(mqttrs::Publish { dup: false, topic_name, payload, .. })
-                                        if topic_name == args.mqtt_home_assistant_status_topic.as_ref() && payload == b"online" => {
+                                        if *topic_name == args.mqtt_home_assistant_status_topic.as_ref() && payload == b"online" => {
                                             if args.verbose {
                                                 eprintln!("Got online from home assistant. Restarting mapping.");
                                             }

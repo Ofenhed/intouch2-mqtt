@@ -1,7 +1,6 @@
 use mqttrs::*;
 use std::{
     net::SocketAddr,
-    ops::Deref,
     path::Path,
     pin::{pin, Pin},
     sync::{
@@ -42,15 +41,13 @@ pub struct SessionBuilder<'a> {
 
 #[derive(Debug)]
 pub struct MqttPacket {
-    pub buf: Pin<Box<[u8]>>,
-    pub packet: Packet<'static>,
+    _buf: Pin<Box<[u8]>>,
+    packet: Packet<'static>,
 }
 
-impl Deref for MqttPacket {
-    type Target = Packet<'static>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.packet
+impl MqttPacket {
+    pub fn packet(&self) -> &Packet {
+        unsafe { transmute_lifetime(&self.packet) }
     }
 }
 
@@ -68,7 +65,39 @@ impl TryFrom<&'_ [u8]> for MqttPacket {
         let Some(packet) = packet else {
             return Err(MqttError::NotEnoughData(value.into()))?;
         };
-        Ok(MqttPacket { buf: data, packet })
+        Ok(MqttPacket { _buf: data, packet })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    impl Drop for super::MqttPacket {
+        fn drop(&mut self) {
+            eprintln!("Dropping packet {self:?}");
+        }
+    }
+
+    #[test]
+    fn self_referential() -> anyhow::Result<()> {
+        let mut buffer1 = [0; 512];
+        let mut buffer2 = [0; 512];
+        let packet1_original = mqttrs::Packet::Puback(mqttrs::Pid::try_from(10).unwrap());
+        let packet2_original = mqttrs::Packet::Connack(mqttrs::Connack {
+            session_present: true,
+            code: mqttrs::ConnectReturnCode::Accepted,
+        });
+        let data1_len = mqttrs::encode_slice(&packet1_original, &mut buffer1)?;
+        let data2_len = mqttrs::encode_slice(&packet2_original, &mut buffer2)?;
+        let data1 = &buffer1[..data1_len];
+        let data2 = &buffer2[..data2_len];
+        let mut packet1 = super::MqttPacket::try_from(data1)?;
+        let mut packet2 = super::MqttPacket::try_from(data2)?;
+        assert_eq!(packet1.packet(), &packet1_original);
+        assert_eq!(packet2.packet(), &packet2_original);
+        std::mem::swap(&mut packet1, &mut packet2);
+        assert_eq!(packet1.packet(), &packet2_original);
+        assert_eq!(packet2.packet(), &packet1_original);
+        Ok(())
     }
 }
 
