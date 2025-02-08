@@ -90,6 +90,10 @@ pub enum SpaCommand {
         pos: u16,
         data: Box<[u8]>,
     },
+    KeyPress {
+        key: u8,
+        pack_type: u8,
+    },
     SetWatercare(u8),
 }
 
@@ -342,6 +346,22 @@ impl SpaConnection {
                                     data: package_data::SetWatercare {
                                         seq: seq.fetch_add(1, Ordering::Relaxed),
                                         mode,
+                                    }
+                                    .into(),
+                                }
+                                .to_static(),
+                            )
+                            .await?;
+                        }
+                        Some(SpaCommand::KeyPress { key, pack_type }) => {
+                            tx.send(
+                                NetworkPackage::Addressed {
+                                    src: Some((*src).into()),
+                                    dst: Some((*dst).into()),
+                                    data: package_data::KeyPress {
+                                        seq: seq.fetch_add(1, Ordering::Relaxed),
+                                        pack_type,
+                                        key,
                                     }
                                     .into(),
                                 }

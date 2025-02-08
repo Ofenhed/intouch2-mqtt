@@ -195,7 +195,7 @@ impl MappingType {
                     for child in children.iter() {
                         subscriptions.push(child.subscribe(spa, jobs).await?);
                     }
-                    for sub in children.to_owned().into_iter() {
+                    for sub in children.to_owned().iter() {
                         let mut subscriber = sub.subscribe(spa, jobs).await?;
                         let tx = tx.clone();
                         jobs.spawn(async move {
@@ -303,6 +303,10 @@ pub enum CommandMappingType {
         pack_type: u8,
         #[serde(flatten)]
         data: CommandStatusType,
+    },
+    KeyPress {
+        key: u8,
+        pack_type: u8,
     },
     Special(SpecialMode<CommandMappingType>),
 }
@@ -583,6 +587,29 @@ impl Mapping {
                                             spa_sender.send(SpaCommand::SetStatus {
                                                 config_version: *config_version, log_version: *log_version, pack_type: *pack_type, pos: range.start, data: (*payload).into(),
                                             }).await?;
+                                        }
+                                        (
+                                            CommandMappingType::KeyPress { key, pack_type },
+                                            Packet::Publish(Publish {
+                                                dup: false,
+                                                topic_name,
+                                                payload,
+                                                ..
+                                            }),
+                                        ) if topic_name == &topic => {
+                                            let count = match String::from_utf8_lossy(payload).parse() {
+                                                Ok(count) => count,
+                                                Err(_) if matches!(payload, &b"none") => 0,
+                                                Err(e) => {
+                                                    eprintln!("Invalid data from MQTT: {e}");
+                                                    continue;
+                                                }
+                                            };
+                                            for _ in 0..count {
+                                                spa_sender.send(SpaCommand::KeyPress {
+                                                    pack_type: *pack_type, key: *key,
+                                                }).await?;
+                                            }
                                         }
                                         _ => (),
                                     };

@@ -3,6 +3,7 @@ members = [
   "intouch2",
   "intouch2-mqtt",
 ]
+resolver = "2"
 
 [profile.release]
 codegen-units = 1
