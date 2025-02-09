@@ -182,8 +182,8 @@ single address (for raw memory writes), or a keypress. I don't know what all
 the fields in the raw write mode actually mean, but since they are static it
 hasn't been an issue.
 
-The raw writes expect to get an array matching the chosen type, so one byte for
-a `u8` and two for `u16`.
+The raw writes expect to get a raw bytestring matching the size of the chosen
+type, so one byte for a `u8` and two for `u16`.
 
 The key presses expect an int (but will accept and strip the suffix `.0`, so a
 whole number float will be accepted) which represents how many times the button
