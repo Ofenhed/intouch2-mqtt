@@ -190,3 +190,6 @@ whole number float will be accepted) which represents how many times the button
 should be pressed. This means that the template may return `0` if the state is
 not to be changed. In the example above, pump 1 is a two step pump, which is
 handled by pressing the button 0-2 times whenever a certain speed is requested.
+
+## Usage
+To use this package, you will have to add [https://github.com/Ofenhed/hassio-addons](https://github.com/Ofenhed/hassio-addons) as a addon source in Home Assistant, and install the addon. Unfortunately, this will take a while, as I don't provide prepackaged docker containers.
