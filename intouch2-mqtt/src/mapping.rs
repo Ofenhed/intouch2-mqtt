@@ -597,7 +597,7 @@ impl Mapping {
                                                 ..
                                             }),
                                         ) if topic_name == &topic => {
-                                            let count = match String::from_utf8_lossy(payload).parse() {
+                                            let count = match String::from_utf8_lossy(payload.strip_suffix(b".0").unwrap_or(&payload[..])).parse() {
                                                 Ok(count) => count,
                                                 Err(_) if matches!(payload, &b"none") => 0,
                                                 Err(e) => {
