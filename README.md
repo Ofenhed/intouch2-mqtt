@@ -11,6 +11,18 @@ start and stop pumps, or change light status or colors, the spa will push an
 update of the affected memory area. You can then set up rules to map it against
 MQTT.
 
+What you do is basically that you set up your MQTT values, one MQTT discovery
+object per entity in `entities_json`, and you pretty much type it exactly as
+you would with static data, with the exception of special `state` and `command`
+objects, as described below. For example, if you want to set up a pump you can
+check [the Home Assistant documentation for MQTT
+fans](https://www.home-assistant.io/integrations/fan.mqtt/), and if you want to
+set up a light you simply set it up as described in [the Home Assistant
+documentation for MQTT
+lights](https://www.home-assistant.io/integrations/light.mqtt/). This program
+will change the special objects into MQTT addresses, and handle the updates to
+and from other MQTT clients, such as Home Assistant.
+
 ## Example rule:
 This is the configuration I'm using:
 ```yaml
