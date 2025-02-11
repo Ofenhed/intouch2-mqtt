@@ -1,4 +1,5 @@
-ARG BUILD_FROM
+ARG BUILD_ARCH
+ARG BUILD_FROM=ghcr.io/home-assistant/${BUILD_ARCH}
 FROM rust:alpine as base
 RUN rustup toolchain install nightly && rustup default nightly
 RUN apk add --no-cache musl-dev
