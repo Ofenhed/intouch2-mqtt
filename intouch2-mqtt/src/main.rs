@@ -1,5 +1,5 @@
 use anyhow::Context;
-use clap::Parser;
+use clap::{Args, Parser};
 use intouch2::object::{package_data, NetworkPackageData};
 use intouch2_mqtt::{
     home_assistant,
@@ -141,26 +141,6 @@ struct Command {
     #[arg(default_value = "10022", alias = "forward-port")]
     spa_forward_listen_port: u16,
 
-    /// The MQTT server address and port number
-    #[arg(long)]
-    mqtt_target: Option<Arc<str>>,
-
-    #[arg(
-        short = 'u',
-        requires("mqtt_password"),
-        requires("mqtt_target"),
-        env("MQTT_USER")
-    )]
-    mqtt_username: Option<Arc<str>>,
-
-    #[arg(
-        short = 'p',
-        requires("mqtt_username"),
-        requires("mqtt_target"),
-        env("MQTT_PASSWORD")
-    )]
-    mqtt_password: Option<Arc<str>>,
-
     #[serde(default = "default_values::discovery_topic")]
     #[arg(default_value = "homeassistant")]
     mqtt_discovery_topic: Arc<str>,
@@ -198,19 +178,56 @@ struct Command {
     #[arg(skip)]
     #[serde(rename = "entities_json", default)]
     entities: Vec<JsonValue<mapping::GenericMapping>>,
+
+    #[command(flatten)]
+    #[serde(flatten)]
+    mqtt_auth: MqttAuthOptions,
+}
+
+#[derive(Args, Deserialize, Debug, Default)]
+#[serde(deny_unknown_fields)]
+struct MqttAuthOptions {
+    /// The MQTT server address and port number
+    #[serde(rename = "mqtt_target")]
+    #[arg(long = "mqtt_target")]
+    target: Option<Arc<str>>,
+
+    #[serde(rename = "mqtt_username")]
+    #[arg(short = 'u', long = "mqtt_username")]
+    username: Option<Arc<str>>,
+
+    #[serde(rename = "mqtt_password")]
+    #[arg(short = 'p', long = "mqtt_password")]
+    password: Option<Arc<str>>,
+}
+
+impl MqttAuthOptions {
+    pub fn fill_defaults(&mut self) {
+        if let target @ None = &mut self.target {
+            *target = std::env::var("MQTT_SERVER").map(|x| x.into()).ok();
+        }
+        if let username @ None = &mut self.username {
+            *username = std::env::var("MQTT_USER").map(|x| x.into()).ok();
+        }
+        if let password @ None = &mut self.password {
+            *password = std::env::var("MQTT_PASSWORD").map(|x| x.into()).ok();
+        }
+    }
 }
 
 impl Command {
     fn get() -> &'static Command {
         static ARGS: OnceLock<Command> = OnceLock::new();
         ARGS.get_or_init(|| {
-            let config_file = "/data/options.json";
+            let config_file =
+                std::env::var("CONFIG_FILE").unwrap_or_else(|_| "/data/options.json".into());
             if std::env::args_os().len() <= 1 {
                 if let Ok(config_file) = std::fs::read(config_file) {
                     let loaded_config = Box::new(config_file);
                     let json = loaded_config.leak();
                     match serde_json::from_slice::<Command>(json) {
                         Ok(mut config) => {
+                            config.mqtt_auth.fill_defaults();
                             return {
                                 for entity in config.entities.iter_mut() {
                                     if let Err(err) = entity.leaking_parse() {
@@ -222,7 +239,7 @@ impl Command {
                                     }
                                 }
                                 config
-                            }
+                            };
                         }
                         Err(err) => {
                             eprintln!("Could not read config: {err}");
@@ -259,14 +276,17 @@ pub enum Error {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Command::get();
-    let mut mqtt = if let Some(target) = &args.mqtt_target {
+    let mut mqtt = if let Some(target) = &args.mqtt_auth.target {
         let mut mqtt_addrs = net::lookup_host(target.as_ref()).await?;
         let mqtt_addr = if let Some(addr) = mqtt_addrs.next() {
             Ok(addr)
         } else {
             Err(Error::NoDnsMatch(target.clone()))
         }?;
-        let auth = match (args.mqtt_username.as_deref(), args.mqtt_password.as_deref()) {
+        let auth = match (
+            args.mqtt_auth.username.as_deref(),
+            args.mqtt_auth.password.as_deref(),
+        ) {
             (Some(username), Some(password)) => MqttAuth::Simple { username, password },
             (None, None) => MqttAuth::None,
             (None, Some(_)) | (Some(_), None) => {

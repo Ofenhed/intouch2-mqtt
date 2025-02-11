@@ -20,6 +20,7 @@ COPY intouch2-mqtt/ ./intouch2-mqtt/
 RUN touch ./intouch2-mqtt/src/* && cargo build --bin intouch2-mqtt
 
 FROM ${BUILD_FROM}
-COPY --from=base /build/target/debug/intouch2-mqtt /bin/intouch2-mqtt
+COPY --from=base /build/target/debug/intouch2-mqtt /usr/local/bin/intouch2-mqtt
+COPY --chmod=555 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 EXPOSE 10022/udp
-CMD [ "/bin/intouch2-mqtt" ]
+CMD [ "/usr/local/bin/docker-entrypoint.sh" ]
