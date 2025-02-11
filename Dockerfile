@@ -23,4 +23,4 @@ FROM ${BUILD_FROM}
 COPY --from=base /build/target/debug/intouch2-mqtt /usr/local/bin/intouch2-mqtt
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 EXPOSE 10022/udp
-CMD [ "sh", "/usr/local/bin/docker-entrypoint.sh" ]
+CMD [ "env", "bashio", "/usr/local/bin/docker-entrypoint.sh" ]
