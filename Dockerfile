@@ -24,4 +24,4 @@ RUN apk add --no-cache tini
 COPY --from=base /build/target/debug/intouch2-mqtt /usr/local/bin/intouch2-mqtt
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 EXPOSE 10022/udp
-CMD [ "/sbin/tini", "--", "/docker-entrypoint.sh" ]
+ENTRYPOINT [ "/sbin/tini", "--", "/docker-entrypoint.sh" ]
