@@ -20,7 +20,8 @@ COPY intouch2-mqtt/ ./intouch2-mqtt/
 RUN touch ./intouch2-mqtt/src/* && cargo build --bin intouch2-mqtt
 
 FROM ${BUILD_FROM}
+RUN apk add --no-cache tini
 COPY --from=base /build/target/debug/intouch2-mqtt /usr/local/bin/intouch2-mqtt
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 EXPOSE 10022/udp
-CMD [ "env", "bashio", "/usr/local/bin/docker-entrypoint.sh" ]
+CMD [ "/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh" ]
