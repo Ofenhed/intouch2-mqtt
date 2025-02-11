@@ -1,15 +1,21 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.210"
+version: "0.1.211"
 slug: "intouch2-mqtt"
 init: false
 startup: application
 arch:
-  - armhf
-  - armv7
   - aarch64
   - amd64
+  - armhf
+  - armv7
   - i386
+build_from:
+  aarch64: ghcr.io/home-assistant/aarch64-base:latest
+  amd64: ghcr.io/home-assistant/amd64-base:latest
+  armhf: ghcr.io/home-assistant/armhf-base:latest
+  armv7: ghcr.io/home-assistant/armv7-base:latest
+  i386: ghcr.io/home-assistant/i386-base:latest
 stage: experimental
 ports:
   10022/udp: 10022
