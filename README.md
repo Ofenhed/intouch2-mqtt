@@ -30,6 +30,12 @@ spa_target: 192.168.0.123:10022
 spa_id: my_wet_hideaway
 spa_memory_size: 637 # This is likely not the same as yours
 log_level: Info
+# # You can define an MQTT target, but you don't have to if you're running as a
+# # Home Assistant addon, as the addon will get this information from Home
+# # Assistant.
+# mqtt_target: core-mosquitto:1883
+# mqtt_username: addons
+# mqtt_password: 12345 # That's the stupidest combination I've ever heard in my life! That's the kind of thing an idiot would have on his luggage!
 entities_json:
   - |-
     {"name": "Primary",
