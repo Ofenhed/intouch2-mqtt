@@ -14,6 +14,7 @@ use tokio::{
     sync::{self, mpsc, watch, Mutex, OwnedMutexGuard},
     task::JoinSet,
 };
+use tracing::{trace_span, warn};
 
 use crate::{
     home_assistant,
@@ -449,6 +450,7 @@ impl Mapping {
         spa: &SpaConnection,
         mqtt: &mut MqttSession,
     ) -> Result<(), MappingError> {
+        let span_add_generic = trace_span!("add generic");
         let config_topic = mqtt.topic(&mapping.mqtt_type, &mapping.unique_id, Topic::Config);
         let mut counter = 0;
         let topics = mqtt.topic_generator();
@@ -539,6 +541,7 @@ impl Mapping {
                         {
                             let topic = topic.clone();
                             let command = command.clone();
+                            let span_add_generic = span_add_generic.clone();
                             self.jobs.spawn(async move {
                                 loop {
                                     match (&command, &receiver.recv().await?.packet()) {
@@ -554,11 +557,11 @@ impl Mapping {
                                             let Ok(valid_str) =
                                                 String::from_utf8(Vec::from(*payload))
                                             else {
-                                                eprintln!("Invalid payload from MQTT: {payload:?}");
+                                                warn!(parent: &span_add_generic, "Invalid payload from MQTT: {payload:?}");
                                                 continue;
                                             };
                                             let Ok(mode) = valid_str.parse() else {
-                                                eprintln!("Invalid payload from MQTT: {valid_str}");
+                                                warn!(parent: &span_add_generic, "Invalid payload from MQTT: {valid_str}");
                                                 continue;
                                             };
                                             spa_sender.send(SpaCommand::SetWatercare(mode)).await?;
@@ -576,12 +579,12 @@ impl Mapping {
                                             let payload = match data.parse(payload) {
                                                 Ok(data) => data,
                                                 Err(e) => {
-                                                    eprintln!("Invalid data from MQTT: {e}");
+                                                    warn!(parent: &span_add_generic, "Invalid data from MQTT: {e}");
                                                     continue;
                                                 }
                                             };
                                             if range.len() != payload.len() {
-                                                eprintln!("Data does not match size constraint of {len}: {payload:?}", len = range.len());
+                                                warn!(parent: &span_add_generic, "Data does not match size constraint of {len}: {payload:?}", len = range.len());
                                                 continue;
                                             }
                                             spa_sender.send(SpaCommand::SetStatus {
@@ -601,7 +604,7 @@ impl Mapping {
                                                 Ok(count) => count,
                                                 Err(_) if matches!(payload, &b"none") => 0,
                                                 Err(e) => {
-                                                    eprintln!("Invalid data from MQTT: {e}");
+                                                    warn!(parent: &span_add_generic, "Invalid data from MQTT: {e}");
                                                     continue;
                                                 }
                                             };

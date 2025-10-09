@@ -1,4 +1,5 @@
 #![feature(sync_unsafe_cell)]
+#![feature(error_generic_member_access)]
 
 pub mod home_assistant;
 pub mod mapping;
@@ -6,6 +7,7 @@ pub mod mqtt_session;
 pub mod port_forward;
 pub mod port_forward_mapping;
 pub mod spa;
+pub mod spanned_result;
 
 use std::{
     mem::MaybeUninit,
@@ -13,6 +15,8 @@ use std::{
     ops::Deref,
     sync::Arc,
 };
+
+pub use spanned_result::ResultSpan;
 
 pub trait WithBuffer {
     type Buffer: AsRef<[u8]>;

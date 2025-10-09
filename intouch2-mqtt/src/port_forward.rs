@@ -18,6 +18,7 @@ use tokio::{
     task::JoinSet,
     time::{self, timeout_at, Instant},
 };
+use tracing::{debug, info, trace, trace_span, warn};
 
 use crate::{
     port_forward_mapping::{ForwardAddr, ForwardMapping},
@@ -115,7 +116,6 @@ pub struct PortForward {
     udp_timeout: Duration,
     forwards: ForwardMapping<()>,
     package_dump_pipe: Option<Arc<broadcast::Sender<DataDumpType>>>,
-    verbose: bool,
     dump_traffic: bool,
 }
 
@@ -126,7 +126,6 @@ pub struct PortForwardBuilder {
     pub udp_timeout: Duration,
     pub local_connection: Option<PackagePipe>,
     pub package_dump_pipe: Option<broadcast::Sender<DataDumpType>>,
-    pub verbose: bool,
     pub dump_traffic: bool,
 }
 
@@ -172,6 +171,7 @@ impl PortForwardBuilder {
     }
 
     pub async fn build(self) -> Result<PortForward, PortForwardError> {
+        let span_port_forward_builder = trace_span!("build port forward builder");
         let PortForwardBuilder {
             listen_addr,
             target_addr,
@@ -179,15 +179,12 @@ impl PortForwardBuilder {
             udp_timeout,
             local_connection,
             package_dump_pipe: package_dump,
-            verbose,
             dump_traffic,
         } = self;
 
         let target_bind_addr = unspecified_source_for_taget(target_addr);
         let (send_clients, recv_clients) = if let Some(listen_addr) = listen_addr {
-            if self.verbose {
-                eprintln!("Listening on {listen_addr}");
-            }
+            info!(parent: &span_port_forward_builder, "Listening on {listen_addr}");
             let sock_clients = StaticBox::new(UdpSocket::bind(listen_addr).await?);
             let send_clients = Arc::new(Mutex::new(sock_clients.to_no_clone()));
             let recv_clients = sock_clients.to_no_clone();
@@ -250,7 +247,6 @@ impl PortForwardBuilder {
             handshake_timeout,
             udp_timeout,
             package_dump_pipe: package_dump.map(Into::into),
-            verbose,
             dump_traffic,
         })
     }
@@ -258,6 +254,8 @@ impl PortForwardBuilder {
 
 impl PortForward {
     pub async fn run(mut self) -> Result<(), PortForwardError> {
+        let span_port_forward = trace_span!("port forward run");
+        let span_dump_traffic = trace_span!(parent: &span_port_forward, "dump traffic");
         let mut spa_hello = SpaHello::new(&self.spa_hello)?;
         let hello_response = Arc::new(RwLock::new(compose_network_data(&NetworkPackage::Hello(
             Cow::Borrowed(&spa_hello.id),
@@ -389,10 +387,8 @@ impl PortForward {
                         let (timeouts, next_timeout) = self
                             .forwards
                             .clear_timeouts(self.handshake_timeout, self.udp_timeout);
-                        if self.verbose {
-                            for client in timeouts.iter() {
-                                eprintln!("Client {client:?} timed out")
-                            }
+                        for client in timeouts.iter() {
+                            warn!(parent: &span_port_forward, "Client {client:?} timed out")
                         }
                         workers.spawn(async move {
                             if let Some(next_timeout) = next_timeout {
@@ -419,7 +415,7 @@ impl PortForward {
                                     NetworkPackageData::Ping | NetworkPackageData::Pong
                                 )
                             {
-                                eprintln!("Self -> {}", package.display());
+                                debug!(parent: &span_dump_traffic, "Self -> {}", package.display());
                             }
                             if let Some(dump_pipe) = &mut self.package_dump_pipe {
                                 dump_pipe
@@ -443,7 +439,7 @@ impl PortForward {
                             send_pipe.send(NetworkPackage::Hello(self.spa_hello.clone().into()))?;
                         }
                         invalid_package => {
-                            eprintln!("Invalid package from pipe: {invalid_package}")
+                            warn!(parent: &span_dump_traffic, "Invalid package from pipe: {invalid_package}")
                         }
                     },
                     SocketData::FromClient {
@@ -463,7 +459,11 @@ impl PortForward {
                                     NetworkPackageData::Ping | NetworkPackageData::Pong
                                 )
                             {
-                                eprintln!("{source_addr} -> {}", content.display());
+                                debug!(
+                                    parent: &span_dump_traffic,
+                                    "{source_addr} -> {}",
+                                    content.display()
+                                );
                             }
                             if let Some(dump_pipe) = &mut self.package_dump_pipe {
                                 dump_pipe.send((
@@ -476,8 +476,9 @@ impl PortForward {
                                 self.forwards
                                     .insert(ForwardAddr::Socket(source_addr), &**src, ());
                             info.did_forward();
-                            if self.verbose && count_before != self.forwards.len() {
-                                eprintln!(
+                            if count_before != self.forwards.len() {
+                                info!(
+                                    parent: &span_port_forward,
                                     "New client {} at {}",
                                     String::from_utf8_lossy(&src),
                                     source_addr
@@ -492,47 +493,52 @@ impl PortForward {
                                 } else {
                                     None
                                 };
+                            let span_port_forward = span_port_forward.clone();
                             workers.spawn(async move {
                                 send_spa.lock().await.send(&data).await?;
                                 if let Some((send_pipe, content)) = send_pipe {
-                                    eprintln!("Forwarding set command");
+                                    if tracing::enabled!(tracing::Level::TRACE) {
+                                        trace!(
+                                            parent: &span_port_forward,
+                                            "Forwarding set command {package}",
+                                            package = tracing::field::display(&content)
+                                        );
+                                    } else {
+                                        info!(
+                                            parent: &span_port_forward,
+                                            "Forwarding set command"
+                                        );
+                                    }
                                     send_pipe.send(content)?;
                                 }
                                 Ok(SocketData::SendCompleted { buf: Some(data) })
                             });
                         }
                         Ok(NetworkPackage::Addressed { dst: Some(dst), .. }) => {
-                            if self.verbose {
-                                eprintln!(
-                                    "Received package addressed for unknown id {}",
-                                    String::from_utf8_lossy(&dst)
-                                )
-                            }
+                            warn!(
+                                parent: &span_port_forward,
+                                "Received package addressed for unknown id {}",
+                                String::from_utf8_lossy(&dst)
+                            )
                         }
                         Ok(NetworkPackage::Addressed { dst: None, .. }) => {
-                            if self.verbose {
-                                eprintln!("Received unaddressed packet from {source_addr}");
-                            }
+                            warn!(parent: &span_port_forward, "Received unaddressed packet from {source_addr}");
                         }
                         Err(package_error) => {
-                            if self.verbose {
-                                eprintln!(
-                                    "Invalid package received from {source_addr}: {package_error}"
-                                )
-                            }
+                            warn!(parent: &span_port_forward,
+                                "Invalid package received from {source_addr}: {package_error}"
+                            )
                         }
                         Ok(NetworkPackage::Hello(_)) => {
                             let Some(send_clients) = &self.send_clients else {
                                 unreachable!("How can you get messages from clients if you don't have any clients?")
                             };
-                            if self.verbose {
-                                if self
-                                    .forwards
-                                    .get_addr(&ForwardAddr::Socket(source_addr))
-                                    .is_none()
-                                {
-                                    eprintln!("New hello received from {source_addr}")
-                                }
+                            if self
+                                .forwards
+                                .get_addr(&ForwardAddr::Socket(source_addr))
+                                .is_none()
+                            {
+                                info!(parent: &span_port_forward, "New hello received from {source_addr}")
                             }
                             let send_clients = send_clients.clone();
                             let hello_response = hello_response.clone();
@@ -568,7 +574,7 @@ impl PortForward {
                                                 NetworkPackageData::Ping | NetworkPackageData::Pong
                                             )
                                         {
-                                            eprintln!("Self <- {}", content.display());
+                                            debug!(parent: &span_dump_traffic, "Self <- {}", content.display());
                                         }
                                         let package = package.to_static();
                                         if let (
@@ -596,7 +602,7 @@ impl PortForward {
                                                 NetworkPackageData::Ping | NetworkPackageData::Pong
                                             )
                                         {
-                                            eprintln!("{addr} <- {}", content.display());
+                                            debug!(parent: &span_dump_traffic, "{addr} <- {}", content.display());
                                         }
                                         if let Some(dump_pipe) = &mut self.package_dump_pipe {
                                             dump_pipe.send((
@@ -630,18 +636,14 @@ impl PortForward {
                             }
                         }
                         Err(package_error) => {
-                            if self.verbose {
-                                eprintln!("Invalid package received from spa: {package_error}")
-                            }
+                            warn!(parent: &span_port_forward, "Invalid package received from spa: {package_error}")
                         }
                         Ok(NetworkPackage::Hello(id)) => {
                             if id[..] != self.spa_hello[..] {
-                                if self.verbose {
-                                    eprintln!(
-                                        "Spa changed name to {}",
-                                        String::from_utf8_lossy(&id)
-                                    );
-                                }
+                                info!(parent: &span_port_forward,
+                                    "Spa changed name to {}",
+                                    String::from_utf8_lossy(&id)
+                                );
                                 self.spa_hello = id.into();
                                 spa_hello = SpaHello::new(&self.spa_hello)?;
                                 *hello_response.write().await = compose_network_data(
@@ -650,18 +652,14 @@ impl PortForward {
                             }
                         }
                         Ok(NetworkPackage::Addressed { dst: None, .. }) => {
-                            if self.verbose {
-                                eprintln!("Got package without destination from Spa");
-                            }
+                            warn!(parent: &span_port_forward, "Got package without destination from Spa");
                         }
                     },
                     SocketData::SpawnClientListener { .. }
                     | SocketData::SpawnSpaListener { .. }
                     | SocketData::SpawnPipeListener { .. } => (),
                     SocketData::PipeDied => {
-                        if self.verbose {
-                            eprintln!("Internal Spa pipe disconnected")
-                        }
+                        warn!(parent: &span_port_forward, "Internal Spa pipe disconnected")
                     }
                     filtered @ SocketData::SendCompleted { .. }
                     | filtered @ SocketData::Timeout => {

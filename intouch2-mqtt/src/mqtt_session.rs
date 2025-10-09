@@ -8,6 +8,7 @@ use std::{
         Arc,
     },
 };
+use tracing::info;
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -46,7 +47,7 @@ pub struct MqttPacket {
 }
 
 impl MqttPacket {
-    pub fn packet(&self) -> &Packet {
+    pub fn packet(&'_ self) -> &'_ Packet<'_> {
         unsafe { transmute_lifetime(&self.packet) }
     }
 }
@@ -525,6 +526,11 @@ impl SessionBuilder<'_> {
             connect.password = Some(password.as_bytes());
         }
         let mut buffer = Box::new([0; 4096]);
+        info!(
+            "Connecting to {}@{}",
+            connect.username.unwrap_or("<anonymous>"),
+            self.target
+        );
         let packet = Packet::Connect(connect);
         let packet_len = encode_slice(&packet, buffer.as_mut())?;
         let connection = match self.target {

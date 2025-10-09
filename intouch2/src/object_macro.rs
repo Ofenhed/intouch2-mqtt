@@ -281,7 +281,7 @@ macro_rules! gen_packages {
         $crate::gen_packages!( PARSER_CONTENT $($const)* $($arg)* )(input)
       }
       #[allow(dead_code)]
-      pub fn compose(&self) -> std::borrow::Cow<[u8]> {
+      pub fn compose(&'_ self) -> std::borrow::Cow<'_, [u8]> {
           match self {
               $($enum_name::$const => $const.compose(),)*
               $($enum_name::$arg(x) => x.compose(),)*

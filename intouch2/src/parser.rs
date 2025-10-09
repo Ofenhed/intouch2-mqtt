@@ -38,7 +38,7 @@ fn parse_hello_package<'a>(input: &'a [u8]) -> IResult<&'a [u8], NetworkPackage<
     Ok((input, NetworkPackage::Hello(hello.into())))
 }
 
-fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData> {
+fn parse_datas(input: &'_ [u8]) -> IResult<&'_ [u8], NetworkPackageData<'_>> {
     let (input, datas) = surrounded(b"<DATAS>", b"</DATAS>")(input)?;
     let ([], data) = NetworkPackageData::parse(datas)? else {
         return Err(nom::Err::Error(nom::error::Error::new(

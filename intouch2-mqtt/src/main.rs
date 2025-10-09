@@ -7,6 +7,7 @@ use intouch2_mqtt::{
     mqtt_session::{MqttAuth, SessionBuilder as MqttSession},
     port_forward::{FullPackagePipe, PortForwardBuilder, PortForwardError},
     spa::{SpaConnection, SpaError},
+    ResultSpan as _,
 };
 use mqttrs::SubscribeTopic;
 use serde_json::json;
@@ -19,6 +20,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::Duration,
 };
+use tracing::{debug, event, info, trace_span, Level};
 
 use serde::Deserialize;
 
@@ -64,6 +66,10 @@ mod default_values {
     }
     pub fn configure_sleep_duration() -> f32 {
         1.0
+    }
+
+    pub fn log_level() -> log::LevelFilter {
+        log::LevelFilter::Warn
     }
 }
 
@@ -125,9 +131,6 @@ struct Command {
     spa_handshake_timeout: u16,
     #[serde(default = "default_values::r#false")]
     #[arg(short, long)]
-    verbose: bool,
-    #[serde(default = "default_values::r#false")]
-    #[arg(short, long)]
 
     /// Dump all traffic to stdout
     dump_traffic: bool,
@@ -179,6 +182,11 @@ struct Command {
     #[serde(rename = "entities_json", default)]
     entities: Vec<JsonValue<mapping::GenericMapping>>,
 
+    #[cfg(feature = "log")]
+    #[arg(skip = log::LevelFilter::Warn)]
+    #[serde(default = "default_values::log_level")]
+    log_level: log::LevelFilter,
+
     #[command(flatten)]
     #[serde(flatten)]
     mqtt_auth: MqttAuthOptions,
@@ -222,18 +230,27 @@ impl Command {
             let config_file =
                 std::env::var("CONFIG_FILE").unwrap_or_else(|_| "/data/options.json".into());
             if std::env::args_os().len() <= 1 {
+                let span_read_config = trace_span!("read config", config_file);
+                let _ = span_read_config.enter();
                 if let Ok(config_file) = std::fs::read(config_file) {
                     let loaded_config = Box::new(config_file);
                     let json = loaded_config.leak();
+                    let span_parse_config = trace_span!(parent: &span_read_config, "parse config");
+                    let _ = span_parse_config.enter();
                     match serde_json::from_slice::<Command>(json) {
                         Ok(mut config) => {
                             config.mqtt_auth.fill_defaults();
                             return {
                                 for entity in config.entities.iter_mut() {
                                     if let Err(err) = entity.leaking_parse() {
-                                        eprintln!("Could not parse entity json: {err}");
-                                        if let Some(cause) = err.source() {
-                                            eprintln!("{cause}");
+                                        event!(parent: &span_parse_config,
+                                            Level::ERROR,
+                                            "Could not parse entity json: {err}"
+                                        );
+                                        if let Some(source) = err.source() {
+                                            event!(parent: &span_parse_config,
+                                                Level::ERROR,
+                                                "Source: {source}");
                                         }
                                         std::process::exit(1);
                                     }
@@ -242,7 +259,7 @@ impl Command {
                             };
                         }
                         Err(err) => {
-                            eprintln!("Could not read config: {err}");
+                            event!(parent: span_parse_config, Level::ERROR, "Could not read config: {err}");
                             std::process::exit(1);
                         }
                     }
@@ -276,8 +293,17 @@ pub enum Error {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Command::get();
+    #[cfg(feature = "env_logger")]
+    env_logger::builder()
+        .filter_level(args.log_level)
+        .parse_default_env()
+        .init();
     let mut mqtt = if let Some(target) = &args.mqtt_auth.target {
-        let mut mqtt_addrs = net::lookup_host(target.as_ref()).await?;
+        let connect_mqtt = trace_span!("connect mqtt");
+        let _ = connect_mqtt.enter();
+        let mut mqtt_addrs = net::lookup_host(target.as_ref())
+            .await
+            .into_span(&connect_mqtt)?;
         let mqtt_addr = if let Some(addr) = mqtt_addrs.next() {
             Ok(addr)
         } else {
@@ -312,28 +338,34 @@ async fn main() -> anyhow::Result<()> {
             auth,
             keep_alive: 30,
         };
-        Some(session.connect().await?)
+        info!(parent: &connect_mqtt, "Connecting mqtt session");
+        Some(session.connect().await.into_span(&connect_mqtt)?)
     } else {
         None
     };
-    let mut spa_addrs = net::lookup_host(args.spa_target.as_ref()).await?;
+    let span_connect_spa = trace_span!("connect spa");
+    let span_preparing_connect = trace_span!(parent: &span_connect_spa, "preparing");
+    let guard_preparing = span_preparing_connect.enter();
+    let mut spa_addrs = net::lookup_host(args.spa_target.as_ref())
+        .await
+        .into_span(&span_preparing_connect)?;
     let spa_addr = if let Some(addr) = spa_addrs.next() {
         Ok(addr)
     } else {
         Err(Error::NoDnsMatch(args.spa_target.clone()))
     }?;
-    println!("Spa addr: {spa_addr}");
+    info!(parent: &span_preparing_connect, "Spa addr: {spa_addr}");
+    drop(guard_preparing);
     let spa_pipe = FullPackagePipe::new();
-    let forward_addr = args
-        .spa_forward_listen_ip
-        .as_ref()
-        .map(|x| std::net::SocketAddr::new(*x, args.spa_forward_listen_port));
+    let forward_addr = args.spa_forward_listen_ip.as_ref().map(|x| {
+        info!("Forwarding from port {}", args.spa_forward_listen_port);
+        std::net::SocketAddr::new(*x, args.spa_forward_listen_port)
+    });
     let mut forward_builder = PortForwardBuilder {
         listen_addr: forward_addr,
         target_addr: spa_addr,
         handshake_timeout: Duration::from_secs(args.spa_handshake_timeout.into()),
         udp_timeout: Duration::from_secs(args.spa_udp_timeout.into()),
-        verbose: args.verbose,
         package_dump_pipe: None,
         dump_traffic: args.dump_traffic,
         local_connection: args.spa_memory_size.map(|_| spa_pipe.forwarder),
@@ -396,12 +428,14 @@ async fn main() -> anyhow::Result<()> {
     };
     let forward = forward_builder.build().await?;
     join_set.spawn(async move {
-        println!("Forwarding");
-        forward.run().await?;
-        println!("Stopping forward");
-        Err(Error::PortForwardClosed)?
+        let span_forwarding = trace_span!("forwarding packages");
+        info!(parent: &span_forwarding, "Forwarding");
+        forward.run().await.into_span(&span_forwarding)?;
+        info!(parent: &span_forwarding, "Stopping forward");
+        Err(Error::PortForwardClosed).into_span(&span_forwarding)?
     });
     let mut spa = if let Some(memory_size) = args.spa_memory_size {
+        let _span = span_connect_spa.clone();
         join_set.spawn(async move {
             Ok(JoinResult::SpaConnected(
                 timeout(
@@ -409,20 +443,25 @@ async fn main() -> anyhow::Result<()> {
                     SpaConnection::new(memory_size, spa_pipe.spa),
                 )
                 .await
-                .map_err(|_| Error::NoReplyFromSpa)??,
+                .map_err(|_| Error::NoReplyFromSpa)
+                .into_span(&_span)?
+                .into_span(&_span)?,
             ))
         });
         let Some(reply) = join_set.join_next().await else {
             unreachable!("The function above will return")
         };
-        let JoinResult::SpaConnected(mut spa) = reply??;
-        spa.init().await?;
+        let JoinResult::SpaConnected(mut spa) = reply
+            .in_span(&span_connect_spa)?
+            .in_span(&span_connect_spa)?;
+        spa.init().await.into_span(&span_connect_spa)?;
         Some(Arc::new(spa))
     } else {
         None
     };
     match (mqtt, &mut spa, &args.memory_changes_mqtt_topic) {
         (Some(mut mqtt), Some(ref mut spa), memory_change_topic) => {
+            let span_memory_changes = trace_span!("spa memory changes");
             let (spa_name, spa_version) = {
                 let spa_name = String::from_utf8_lossy(spa.name()).to_string();
                 let spa_version = {
@@ -440,29 +479,32 @@ async fn main() -> anyhow::Result<()> {
                 };
                 (spa_name, spa_version)
             };
-            if args.verbose {
-                eprintln!("Waiting for complete memory dump");
-            }
+            let span_initial_memory =
+                trace_span!(parent: &span_memory_changes, "initial memory dump");
+            let waiting_for_initial_memory = span_initial_memory.enter();
+            info!(parent: &span_initial_memory, "Waiting for complete initial memory dump");
             loop {
                 select! {
                     wait_result = spa.wait_for_valid_data() => {
-                        let _: () = wait_result?;
+                        let _: () = wait_result.into_span(&span_initial_memory)?;
                         break
                     }
                     jobs_result = join_set.join_next() => {
                         if let Some(jobs_result) = jobs_result {
-                            let _: JoinResult = jobs_result??;
+                            let _: JoinResult = jobs_result.into_span(&span_initial_memory)?.in_span(&span_initial_memory)?;
                         }
                     }
                     mqtt_result = mqtt.tick() => {
-                        let _: () = mqtt_result?;
+                        let _: () = mqtt_result.into_span(&span_initial_memory)?;
                     }
                 }
             }
-            if args.verbose {
-                eprintln!("Memory dump received");
-            }
+            info!(parent: &span_initial_memory, "Memory dump received");
+            drop(waiting_for_initial_memory);
+
             if let Some(memory_change_topic) = memory_change_topic {
+                let span_trace_memory_change =
+                    trace_span!(parent: &span_memory_changes, "trace memory changes");
                 let mut mqtt_sender = mqtt.sender();
                 let len = spa.len().await;
                 let mut spa_data = spa.subscribe(0..len).await;
@@ -475,7 +517,10 @@ async fn main() -> anyhow::Result<()> {
                     loop {
                         differences.clear();
                         {
-                            spa_data.changed().await?;
+                            spa_data
+                                .changed()
+                                .await
+                                .in_span(&span_trace_memory_change)?;
                             let data = spa_data.borrow_and_update();
                             for i in 0..len {
                                 if previous[i] != data[i] {
@@ -496,16 +541,15 @@ async fn main() -> anyhow::Result<()> {
                                     .expect("All paths will be valid UTF-8"),
                                 payload: payload.as_bytes(),
                             });
-                            mqtt_sender.send(&package).await?;
+                            mqtt_sender
+                                .send(&package)
+                                .await
+                                .in_span(&span_trace_memory_change)?;
                         }
-                        #[cfg(debug_assertions)]
-                        if args.verbose {
-                            let differences: String = differences
+                        debug!(parent: &span_trace_memory_change, "Differences: {}", differences
                                 .iter()
                                 .map(|(i, d)| format!("{i}: {d}, "))
-                                .collect();
-                            println!("Differences: {}", differences);
-                        }
+                                .collect::<String>());
                     }
                 });
             }
@@ -524,14 +568,13 @@ async fn main() -> anyhow::Result<()> {
                 }])
                 .await?;
                 'send_config: loop {
-                    if args.verbose {
-                        eprintln!("Configuring device mapping");
-                    }
+                    let span_configure_device_mapping = trace_span!("configure device mapping");
+                    info!(parent: &span_configure_device_mapping, "Configuring device mapping");
                     {
                         for entity in &args.entities {
                             mapping
                                 .add_generic(entity.unwrap().clone(), &*spa, &mut mqtt)
-                                .await?;
+                                .await.in_span(&span_configure_device_mapping)?;
                         }
                     }
                     let mut timeout = pin!(tokio::time::sleep_until(tokio::time::Instant::now() + Duration::from_secs_f32(args.sleep_after_mqtt_configuration)));
@@ -541,36 +584,30 @@ async fn main() -> anyhow::Result<()> {
                                 break
                             }
                             spa_result = spa.tick() => {
-                                let _: () = spa_result?;
+                                let _: () = spa_result.into_span(&span_configure_device_mapping)?;
                             }
                             mqtt_result = mqtt.tick() => {
-                                let _: () = mqtt_result?;
+                                let _: () = mqtt_result.into_span(&span_configure_device_mapping)?;
                             }
                         }
                     }
-                    if args.verbose {
-                        eprintln!("Waiting for all states to be sent before notifying online");
-                    }
-                    mapping.start(&mut mqtt).await?;
-                    if args.verbose {
-                        eprintln!("Notifying online");
-                    }
-                    mqtt.notify_online().await?;
+                    info!(parent: &span_configure_device_mapping, "Waiting for all states to be sent before notifying online");
+                    mapping.start(&mut mqtt).await.into_span(&span_configure_device_mapping)?;
+                    info!(parent: &span_configure_device_mapping, "Notifying online");
+                    mqtt.notify_online().await.into_span(&span_configure_device_mapping)?;
                     loop {
                         select! {
                             mapping_result = mapping.tick() => {
-                                let _: () = mapping_result?;
+                                let _: () = mapping_result.into_span(&span_configure_device_mapping)?;
                             }
                             mqtt_result = mqtt.tick() => {
-                                let _: () = mqtt_result?;
+                                let _: () = mqtt_result.into_span(&span_configure_device_mapping)?;
                             }
                             mqtt_package = mqtt_subscription.recv() => {
-                                match mqtt_package?.packet() {
+                                match mqtt_package.in_span(&span_configure_device_mapping)?.packet() {
                                     mqttrs::Packet::Publish(mqttrs::Publish { dup: false, topic_name, payload, .. })
                                         if *topic_name == args.mqtt_home_assistant_status_topic.as_ref() && payload == b"online" => {
-                                            if args.verbose {
-                                                eprintln!("Got online from home assistant. Restarting mapping.");
-                                            }
+                                            info!(parent: &span_configure_device_mapping, "Got online from home assistant. Restarting mapping.");
                                             mapping.reset().await;
                                             continue 'send_config;
                                     }
