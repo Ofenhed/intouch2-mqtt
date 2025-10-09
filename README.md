@@ -29,9 +29,7 @@ This is the configuration I'm using:
 spa_target: 192.168.0.123:10022
 spa_id: my_wet_hideaway
 spa_memory_size: 637 # This is likely not the same as yours
-mqtt_target: core-mosquitto:1883
-mqtt_username: addons
-mqtt_password: 12345 # That's the stupidest combination I've ever heard in my life! That's the kind of thing an idiot would have on his luggage!
+log_level: Info
 entities_json:
   - |-
     {"name": "Primary",
