@@ -1,8 +1,8 @@
-ARG BUILD_ARCH
-ARG BUILD_FROM=ghcr.io/home-assistant/${BUILD_ARCH}
-FROM rust:alpine as base
+ARG BUILD_ARCH=amd64
+ARG BUILD_FROM=ghcr.io/home-assistant/${BUILD_ARCH}-builder:latest
+FROM rust:latest AS build
 RUN rustup toolchain install nightly && rustup default nightly
-RUN apk add --no-cache musl-dev
+RUN apt-get update && apt-get -y install musl-dev
 
 RUN mkdir /build/
 WORKDIR /build/
@@ -22,7 +22,7 @@ RUN touch ./intouch2-mqtt/src/* && cargo build --bin intouch2-mqtt
 
 FROM ${BUILD_FROM}
 RUN apk add --no-cache tini
-COPY --from=base /build/target/debug/intouch2-mqtt /usr/local/bin/intouch2-mqtt
+COPY --from=build /build/target/debug/intouch2-mqtt /usr/local/bin/intouch2-mqtt
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 EXPOSE 10022/udp
 ENTRYPOINT [ "/sbin/tini", "--", "/docker-entrypoint.sh" ]
