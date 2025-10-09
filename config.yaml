@@ -22,7 +22,7 @@ ports:
 ports_description:
   10022/udp: "Port for forwarding (and sniffing) traffic to the Spa system"
 services:
-  - "mqtt:want"
+  - "mqtt:need"
 ingress: false
 advanced: true
 schema:
