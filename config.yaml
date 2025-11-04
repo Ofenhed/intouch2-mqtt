@@ -1,6 +1,6 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.232"
+version: "0.1.233"
 slug: "intouch2-mqtt"
 init: false
 arch:
@@ -13,6 +13,7 @@ ports:
   10022/udp: 10022
 ports_description:
   10022/udp: "Port for forwarding (and sniffing) traffic to the Spa system"
+hassio_api: true
 services:
   - "mqtt:need"
 advanced: true
