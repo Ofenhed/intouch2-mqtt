@@ -1,4 +1,4 @@
-ARG BUILD_ARCH=amd64
+ARG BUILD_ARCH
 ARG BUILD_FROM=ghcr.io/home-assistant/${BUILD_ARCH}-base-ubuntu:latest
 FROM rust:latest AS build
 RUN rustup toolchain install nightly && rustup default nightly
