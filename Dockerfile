@@ -11,7 +11,7 @@ RUN cargo new --bin intouch2-mqtt
 RUN cargo new --lib intouch2
 COPY intouch2/Cargo.toml ./intouch2/Cargo.toml
 COPY intouch2-mqtt/Cargo.toml ./intouch2-mqtt/Cargo.toml
-RUN cargo --release build
+RUN cargo build --release
 
 COPY intouch2/ ./intouch2/
 RUN touch ./intouch2/src/* && cargo build --release -p intouch2
