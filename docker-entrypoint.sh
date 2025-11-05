@@ -1,4 +1,4 @@
-#!/usr/bin/env bashio
+#!/usr/bin/with-contenv bashio
 
 export MQTT_SERVER="$(bashio::services 'mqtt' 'host'):$(bashio::services 'mqtt' 'port')"
 echo "Got MQTT server $MQTT_SERVER"
