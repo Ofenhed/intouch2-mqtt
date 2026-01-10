@@ -196,4 +196,4 @@ not to be changed. In the example above, pump 1 is a two step pump, which is
 handled by pressing the button 0-2 times whenever a certain speed is requested.
 
 ## Usage
-To use this package, you will have to add [https://github.com/Ofenhed/hassio-addons](https://github.com/Ofenhed/hassio-addons) as a addon source in Home Assistant, and install the addon. Unfortunately, this will take a while, as I don't provide prepackaged docker containers.
+To use this package, you will have to add [https://github.com/Ofenhed/hassio-addons](https://github.com/Ofenhed/hassio-addons) as a addon source in Home Assistant, and install the addon.
