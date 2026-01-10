@@ -117,7 +117,6 @@ pub mod package_data {
         },
         Packs( b"PACKS": Simple),
         RadioError(b"RFERR": Simple),
-        WaterQualityError(b"WCERR": Simple),
         Version {
             b"SVERS": Tag,
             en_build: u16,
@@ -169,6 +168,7 @@ pub mod package_data {
             length: u8,
             data: &[u8],
         },
+        WatercareError(b"WCERR": Simple),
         GetWatercare {
             b"GETWC": Tag,
             seq: u8,

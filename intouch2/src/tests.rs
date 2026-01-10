@@ -22,7 +22,7 @@ fn parse_new_ping() {
     ));
     assert!(matches!(
     NetworkPackageData::parse(b"WCERR"),
-    Ok(package) if package == (&[], NetworkPackageData::WaterQualityError),
+    Ok(package) if package == (&[], NetworkPackageData::WatercareError),
     ));
     assert!(matches!(
     NetworkPackageData::parse(b"PUNG"),
@@ -127,23 +127,11 @@ fn id_packets() {
             }
             .into(),
         },
-        // NetworkPackage::Authorized{src: None, dst: None, data: package_data::PushStatus(b"Some
-        // status".as_slice().into())},
         NetworkPackage::Addressed {
             src: None,
             dst: None,
             data: package_data::PushStatusAck { seq: 9 }.into(),
         },
-        // NetworkPackage::Addressed {
-        //  src: None,
-        //  dst: None,
-        //  data: package_data::Error(ErrorType::WaterQuality).into(),
-        //},
-        // NetworkPackage::Addressed {
-        //  src: None,
-        //  dst: None,
-        //  data: NetworkPackageData::Error(ErrorType::Radio),
-        //},
     ];
     for pkg in packets.iter() {
         let composed = compose_network_data(&pkg);
