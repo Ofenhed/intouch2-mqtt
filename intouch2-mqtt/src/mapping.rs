@@ -7,6 +7,7 @@ use std::{
     sync::Arc,
 };
 
+use intouch2::object::ReminderInfo;
 use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
 use serde::Deserialize;
 use tokio::{
@@ -96,6 +97,7 @@ pub struct Mapping {
 #[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SpecialMode<T> {
+    Reminders,
     WatercareMode,
     #[serde(untagged)]
     Multiple(Box<[T]>),
@@ -220,6 +222,30 @@ impl MappingType {
                     let subscribe = spa.subscribe_watercare_mode().await;
                     let map = WatchMap::new(subscribe, |x: &Option<u8>| {
                         x.map(|valid_data| serde_json::Value::Number(valid_data.into()))
+                            .unwrap_or(serde_json::Value::Null)
+                    });
+                    Ok(to_return(map))
+                }
+                MappingType::Special(SpecialMode::Reminders) => {
+                    let subscribe = spa.subscribe_reminders().await;
+                    let map = WatchMap::new(subscribe, |x: &Option<Arc<[ReminderInfo]>>| {
+                        x.as_ref()
+                            .map(|valid_data| {
+                                serde_json::Value::Object(
+                                    valid_data
+                                        .iter()
+                                        .filter(|d| d.valid)
+                                        .map(|info| {
+                                            (
+                                                String::from(Into::<&'static str>::into(
+                                                    info.index,
+                                                )),
+                                                serde_json::Value::Number(info.data.into()),
+                                            )
+                                        })
+                                        .collect(),
+                                )
+                            })
                             .unwrap_or(serde_json::Value::Null)
                     });
                     Ok(to_return(map))

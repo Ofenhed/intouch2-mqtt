@@ -45,7 +45,9 @@ impl ToStatic for ReminderInfo {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, strum::FromRepr)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, strum::FromRepr, strum::IntoStaticStr, strum::EnumString,
+)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 #[repr(u8)]
 pub enum ReminderIndex {

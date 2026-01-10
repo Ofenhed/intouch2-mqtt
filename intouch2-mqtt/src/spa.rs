@@ -12,7 +12,7 @@ use std::{
 use intouch2::{
     datas::GeckoDatas,
     generate_uuid,
-    object::{package_data, NetworkPackage, NetworkPackageData, StatusChange},
+    object::{package_data, NetworkPackage, NetworkPackageData, ReminderInfo, StatusChange},
     parser::ParseError,
 };
 use tokio::{
@@ -30,6 +30,7 @@ pub struct SpaConnection {
     dst: Arc<[u8]>,
     name: Arc<[u8]>,
     watercare_mode: Arc<Mutex<sync::watch::Sender<Option<u8>>>>,
+    reminders: Arc<Mutex<sync::watch::Sender<Option<Arc<[ReminderInfo]>>>>>,
     ping_interval: Arc<Mutex<time::Interval>>,
     get_watercare_mode_interval: Arc<Mutex<time::Interval>>,
     full_state_download_interval: Arc<Mutex<time::Interval>>,
@@ -121,6 +122,10 @@ impl SpaConnection {
         self.watercare_mode.lock().await.subscribe()
     }
 
+    pub async fn subscribe_reminders(&self) -> sync::watch::Receiver<Option<Arc<[ReminderInfo]>>> {
+        self.reminders.lock().await.subscribe()
+    }
+
     pub async fn len(&self) -> usize {
         self.state.lock().await.len()
     }
@@ -202,6 +207,7 @@ impl SpaConnection {
                         state_valid: tokio::sync::watch::Sender::new(false).into(),
                         commanders: Mutex::new(commanders).into(),
                         watercare_mode: Mutex::new(sync::watch::Sender::new(None)).into(),
+                        reminders: Mutex::new(sync::watch::Sender::new(None)).into(),
                         ping_interval: Mutex::new(ping_interval).into(),
                         get_watercare_mode_interval: Mutex::new(get_watercare_mode_interval).into(),
                         full_state_download_interval: Mutex::new(full_state_download_interval)
