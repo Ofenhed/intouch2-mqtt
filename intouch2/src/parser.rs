@@ -211,8 +211,8 @@ impl<'a> DatasContent<'a> for ReminderInfo {
             })?,
         );
         let (input, data) = DatasContent::parse(input)?;
-        let (before_valid, _) = nom::bytes::complete::tag(b"\x01")(input)?;
-        let (input, valid) = <u8 as DatasContent>::parse(before_valid)?;
+        let before_valid = input;
+        let (input, valid) = <u8 as DatasContent>::parse(input)?;
         let valid = match valid {
             0 => false,
             1 => true,

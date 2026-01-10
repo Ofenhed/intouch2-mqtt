@@ -237,17 +237,25 @@ pub mod package_data {
             b"WCMDF": Tag,
             data: &[u8],
         },
-        RequestReminders {
+        GetReminders {
             b"REQRM": Tag,
             seq: u8,
         },
-        RemindersRequest {
+        Reminders {
             b"RMREQ": Tag,
             reminders: &[ReminderInfo],
         },
-        MalformedRemindersRequest {
+        MalformedReminders {
             b"RMREQ": Tag,
             reminders: &[u8],
+        },
+        SetReminders {
+            b"SETRM": Tag,
+            seq: u8,
+            reminders: &[ReminderInfo],
+        },
+        RemindersSet {
+            b"RMSET": Tag,
         },
         WatercareRequest(b"WCREQ": Tailing),
         ChannelCurrent {
@@ -257,6 +265,14 @@ pub mod package_data {
         },
         GetChannel {
             b"CURCH": Tag,
+            seq: u8,
+        },
+        GetUpdate {
+            b"UPDTS": Tag,
+            seq: u8,
+        },
+        Update {
+            b"SUPDT": Tag,
             seq: u8,
         },
         FilesRequest(b"SFILE?": Simple),

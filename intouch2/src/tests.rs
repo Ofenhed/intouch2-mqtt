@@ -96,6 +96,21 @@ fn parse_invalid_datas() {
 }
 
 #[test]
+fn parse_reminders() {
+    let valid_payload = [
+        2, 60, 0, 1, 3, 120, 0, 1, 4, 218, 2, 1, 5, 28, 2, 0, 6, 180, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut raw_data = b"RMREQ".to_vec();
+    raw_data.append(&mut valid_payload.to_vec());
+    let parse_fail = match NetworkPackageData::parse(&raw_data) {
+        Ok(([], NetworkPackageData::Reminders(_))) => None,
+        x => Some(x),
+    };
+    assert_eq!(parse_fail, None);
+}
+
+#[test]
 fn id_packets() {
     let packets = vec![
         NetworkPackage::Hello(b"My hello".as_slice().into()),
