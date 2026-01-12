@@ -1,3 +1,8 @@
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
+
 [workspace]
 members = [
   "intouch2",
@@ -5,7 +10,8 @@ members = [
 ]
 resolver = "2"
 
-[profile.release]
-codegen-units = 1
-lto = true
-strip = true
+[workspace.dependencies]
+rand = "0.8"
+serde = "1.0"
+strum = { version = "0.25", features = ["derive"] }
+thiserror = "2.0"
