@@ -68,7 +68,7 @@ pub enum ReminderIndex {
     ChangeVisionCartridge = 6,
 }
 
-pub type ReminderData = u16;
+pub type ReminderData = i16;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]

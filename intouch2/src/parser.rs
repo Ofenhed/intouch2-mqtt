@@ -210,7 +210,14 @@ impl<'a> DatasContent<'a> for ReminderInfo {
                 ))
             })?,
         );
-        let (input, data) = DatasContent::parse(input)?;
+
+        let Some((data, input)) = input.split_first_chunk::<2>() else {
+            return Err(nom::Err::Failure(nom::error::make_error(
+                input,
+                nom::error::ErrorKind::Eof,
+            )));
+        };
+        let data = i16::from_le_bytes(*data);
         let before_valid = input;
         let (input, valid) = <u8 as DatasContent>::parse(input)?;
         let valid = match valid {
@@ -230,7 +237,7 @@ impl<'a> DatasContent<'a> for ReminderInfo {
         Cow::Owned(
             [
                 &[self.index as u8],
-                self.data.to_be_bytes().as_ref(),
+                self.data.to_le_bytes().as_ref(),
                 if self.valid { b"\x01" } else { b"\x00" },
             ][..]
                 .concat()
