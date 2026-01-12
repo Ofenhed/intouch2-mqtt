@@ -33,6 +33,7 @@ pub struct SpaConnection {
     reminders: Arc<Mutex<sync::watch::Sender<Option<Arc<[ReminderInfo]>>>>>,
     ping_interval: Arc<Mutex<time::Interval>>,
     get_watercare_mode_interval: Arc<Mutex<time::Interval>>,
+    update_reminders_interval: Arc<Mutex<time::Interval>>,
     full_state_download_interval: Arc<Mutex<time::Interval>>,
     state: Arc<sync::Mutex<GeckoDatas>>,
     state_valid: Arc<sync::watch::Sender<bool>>,
@@ -168,17 +169,17 @@ impl SpaConnection {
             )
             .await?;
         let state = GeckoDatas::new(memory_size);
-        let mut full_state_download_interval =
-            time::interval_at(time::Instant::now(), Duration::from_secs(1800));
-        let mut ping_interval = time::interval_at(time::Instant::now(), Duration::from_secs(3));
-        let mut get_watercare_mode_interval =
-            time::interval_at(time::Instant::now(), Duration::from_secs(1800));
+        let mut full_state_download_interval = time::interval(Duration::from_mins(30));
+        let mut ping_interval = time::interval(Duration::from_secs(3));
+        let mut get_watercare_mode_interval = time::interval(Duration::from_mins(30));
+        let mut update_reminders_interval = time::interval(Duration::from_hours(2));
+        ping_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
         for interval in [
             &mut full_state_download_interval,
-            &mut ping_interval,
             &mut get_watercare_mode_interval,
+            &mut update_reminders_interval,
         ] {
-            interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+            interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
         }
 
         let spa_object = loop {
@@ -209,6 +210,7 @@ impl SpaConnection {
                         watercare_mode: Mutex::new(sync::watch::Sender::new(None)).into(),
                         reminders: Mutex::new(sync::watch::Sender::new(None)).into(),
                         ping_interval: Mutex::new(ping_interval).into(),
+                        update_reminders_interval: Mutex::new(update_reminders_interval).into(),
                         get_watercare_mode_interval: Mutex::new(get_watercare_mode_interval).into(),
                         full_state_download_interval: Mutex::new(full_state_download_interval)
                             .into(),
@@ -445,6 +447,55 @@ impl SpaConnection {
                                             false
                                         }
                                     });
+                                },
+                                _ => (),
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        {
+            let reminders_interval = self.update_reminders_interval.clone();
+            let src = self.src.clone();
+            let dst = self.dst.clone();
+            let tx = self.pipe.tx.clone();
+            let reminders_list = self.reminders.clone();
+            let seq = self.seq.clone();
+            let mut listener = self.pipe.subscribe();
+            jobs.spawn(async move {
+                let mut reminders_interval = reminders_interval.lock().await;
+                loop {
+                    select! {
+                        _ = reminders_interval.tick() => {
+                            tx.send(NetworkPackage::Addressed {
+                                src: Some(src.as_ref().into()),
+                                dst: Some(dst.as_ref().into()),
+                                data: NetworkPackageData::GetReminders(
+                                    package_data::GetReminders {
+                                        seq: seq.fetch_add(1, Ordering::Relaxed)
+                                    }
+                                )
+                            }.to_static()).await?;
+                        }
+                        new_data = listener.recv() => {
+                            match new_data? {
+                                NetworkPackage::Addressed { data: NetworkPackageData::Reminders(package_data::Reminders { reminders }), .. }
+                                | NetworkPackage::Addressed { data: NetworkPackageData::SetReminders(package_data::SetReminders { reminders, .. }), .. } => {
+                                    reminders_list.lock().await.send_if_modified(|old_value|
+                                        match old_value {
+                                            None => {
+                                                *old_value = Some(reminders.into());
+                                                true
+
+                                            }
+                                            Some(old_value) if old_value.as_ref() != reminders.as_ref() => {
+                                            *old_value = reminders.into();
+                                            true
+                                            }
+                                            _ => false,
+                                        }
+                                    );
                                 },
                                 _ => (),
                             }
