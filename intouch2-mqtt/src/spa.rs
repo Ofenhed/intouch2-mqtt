@@ -518,8 +518,9 @@ impl SpaConnection {
                         }
                         new_data = listener.recv() => {
                             match new_data? {
-                                NetworkPackage::Addressed { data: NetworkPackageData::Reminders(package_data::Reminders { reminders }), .. }
-                                | NetworkPackage::Addressed { data: NetworkPackageData::SetReminders(package_data::SetReminders { reminders, .. }), .. } => {
+                                NetworkPackage::Addressed { data: NetworkPackageData::RemindersSet(package_data::RemindersSet {..}), .. } =>
+                                    reminders_interval.reset_immediately(),
+                                NetworkPackage::Addressed { data: NetworkPackageData::Reminders(package_data::Reminders { reminders }), .. } => {
                                     reminders_list.lock().await.send_if_modified(|old_value|
                                         match old_value {
                                             None => {
