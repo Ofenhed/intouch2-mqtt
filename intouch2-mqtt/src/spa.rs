@@ -367,9 +367,8 @@ impl SpaConnection {
                             .await?;
                         }
                         Some(SpaCommand::SetReminders(reminders)) => {
-                            let Some(old_reminders) =
-                                reminders_list.lock().await.send_replace(None)
-                            else {
+                            let reminders_list = reminders_list.lock().await;
+                            let Some(old_reminders) = reminders_list.send_replace(None) else {
                                 warn!("Trying to set reminders before reminders list is known");
                                 continue;
                             };
@@ -385,6 +384,7 @@ impl SpaConnection {
                                     new_reminder
                                 })
                                 .collect::<Cow<'static, [_]>>();
+                            _ = reminders_list.send(Some((&*new_reminders).into()));
                             tx.send(
                                 NetworkPackage::Addressed {
                                     src: Some((*src).into()),
@@ -519,7 +519,7 @@ impl SpaConnection {
                         new_data = listener.recv() => {
                             match new_data? {
                                 NetworkPackage::Addressed { data: NetworkPackageData::RemindersSet(package_data::RemindersSet {..}), .. } =>
-                                    reminders_interval.reset_immediately(),
+                                    reminders_interval.reset_after(Duration::from_secs(3)),
                                 NetworkPackage::Addressed { data: NetworkPackageData::Reminders(package_data::Reminders { reminders }), .. } => {
                                     reminders_list.lock().await.send_if_modified(|old_value|
                                         match old_value {
