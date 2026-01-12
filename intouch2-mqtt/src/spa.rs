@@ -17,7 +17,7 @@ use intouch2::{
     },
     parser::ParseError,
 };
-use log::{debug, warn};
+use log::warn;
 use tokio::{
     select,
     sync::{self, Mutex},
@@ -345,7 +345,7 @@ impl SpaConnection {
             let dst = self.src.clone();
             let tx = self.pipe.tx.clone();
             let seq = self.seq.clone();
-            let reminders_list = self.subscribe_reminders().await;
+            let reminders_list = self.reminders.clone();
             jobs.spawn(async move {
                 let mut commanders = commanders.lock().await;
                 loop {
@@ -367,7 +367,9 @@ impl SpaConnection {
                             .await?;
                         }
                         Some(SpaCommand::SetReminders(reminders)) => {
-                            let Some(old_reminders) = reminders_list.borrow().clone() else {
+                            let Some(old_reminders) =
+                                reminders_list.lock().await.send_replace(None)
+                            else {
                                 warn!("Trying to set reminders before reminders list is known");
                                 continue;
                             };
@@ -383,20 +385,19 @@ impl SpaConnection {
                                     new_reminder
                                 })
                                 .collect::<Cow<'static, [_]>>();
-                            debug!("Want to send new reminders {new_reminders:?}");
-                            // tx.send(
-                            //     NetworkPackage::Addressed {
-                            //         src: Some((*src).into()),
-                            //         dst: Some((*dst).into()),
-                            //         data: package_data::SetReminders {
-                            //             seq: seq.fetch_add(1, Ordering::Relaxed),
-                            //             reminders: new_reminders,
-                            //         }
-                            //         .into(),
-                            //     }
-                            //     .to_static(),
-                            // )
-                            // .await?;
+                            tx.send(
+                                NetworkPackage::Addressed {
+                                    src: Some((*src).into()),
+                                    dst: Some((*dst).into()),
+                                    data: package_data::SetReminders {
+                                        seq: seq.fetch_add(1, Ordering::Relaxed),
+                                        reminders: new_reminders,
+                                    }
+                                    .into(),
+                                }
+                                .to_static(),
+                            )
+                            .await?;
                         }
                         Some(SpaCommand::KeyPress { key, pack_type }) => {
                             tx.send(
