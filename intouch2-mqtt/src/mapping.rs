@@ -640,6 +640,36 @@ impl Mapping {
                                                 }).await?;
                                             }
                                         }
+                                        (
+                                            CommandMappingType::Special(SpecialMode::Reminders),
+                                            Packet::Publish(Publish {
+                                                dup: false,
+                                                topic_name,
+                                                payload,
+                                                ..
+                                            }),
+                                        ) if topic_name == &&topic => {
+                                            let Ok(serde_json::Value::Object(json_object)) =
+                                                serde_json::from_slice(*payload)
+                                            else {
+                                                warn!(parent: &span_add_generic, "Invalid reminder payload from MQTT: {payload:?}");
+                                                continue;
+                                            };
+                                            let modifier = json_object.into_iter().map(|(key, val)| {
+                                                let serde_json::Value::Number(n) = val else { return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "New reminder state is not a number")); };
+                                                let Some(num64) = n.as_u64() else {
+                                                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "New reminder state is not an unsigned integer number"));
+                                                };
+                                                let num16 = num64.try_into().map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("New reminder state is too large: {e}")))?;
+                                                Ok((key, num16))
+                                            }).collect();
+                                            match modifier {
+                                                Ok(modifier) => spa_sender.send(SpaCommand::SetReminders(modifier)).await?,
+                                                Err(e) => {
+                                                    warn!(parent: &span_add_generic, "Invalid reminder data: {e}");
+                                                }
+                                            }
+                                        }
                                         _ => (),
                                     };
                                 }

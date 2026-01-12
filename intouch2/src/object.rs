@@ -46,7 +46,15 @@ impl ToStatic for ReminderInfo {
 }
 
 #[derive(
-    Clone, Copy, Debug, PartialEq, Eq, strum::FromRepr, strum::IntoStaticStr, strum::EnumString,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    strum::FromRepr,
+    strum::IntoStaticStr,
+    strum::EnumString,
 )]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 #[repr(u8)]
@@ -60,11 +68,13 @@ pub enum ReminderIndex {
     ChangeVisionCartridge = 6,
 }
 
+pub type ReminderData = u16;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ReminderInfo {
     pub index: ReminderIndex,
-    pub data: u16,
+    pub data: ReminderData,
     pub valid: bool,
 }
 

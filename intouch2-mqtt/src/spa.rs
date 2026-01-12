@@ -12,9 +12,12 @@ use std::{
 use intouch2::{
     datas::GeckoDatas,
     generate_uuid,
-    object::{package_data, NetworkPackage, NetworkPackageData, ReminderInfo, StatusChange},
+    object::{
+        package_data, NetworkPackage, NetworkPackageData, ReminderData, ReminderInfo, StatusChange,
+    },
     parser::ParseError,
 };
+use log::{debug, warn};
 use tokio::{
     select,
     sync::{self, Mutex},
@@ -92,6 +95,7 @@ pub enum SpaCommand {
         pos: u16,
         data: Box<[u8]>,
     },
+    SetReminders(HashMap<String, ReminderData>),
     KeyPress {
         key: u8,
         pack_type: u8,
@@ -341,6 +345,7 @@ impl SpaConnection {
             let dst = self.src.clone();
             let tx = self.pipe.tx.clone();
             let seq = self.seq.clone();
+            let reminders_list = self.subscribe_reminders().await;
             jobs.spawn(async move {
                 let mut commanders = commanders.lock().await;
                 loop {
@@ -360,6 +365,38 @@ impl SpaConnection {
                                 .to_static(),
                             )
                             .await?;
+                        }
+                        Some(SpaCommand::SetReminders(reminders)) => {
+                            let Some(old_reminders) = reminders_list.borrow().clone() else {
+                                warn!("Trying to set reminders before reminders list is known");
+                                continue;
+                            };
+                            let new_reminders = old_reminders
+                                .into_iter()
+                                .map(|reminder| {
+                                    let mut new_reminder = reminder.clone();
+                                    let index_name = <&'static str>::from(reminder.index);
+                                    if let Some(data) = reminders.get(index_name) {
+                                        new_reminder.valid = true;
+                                        new_reminder.data = *data;
+                                    }
+                                    new_reminder
+                                })
+                                .collect::<Cow<'static, [_]>>();
+                            debug!("Want to send new reminders {new_reminders:?}");
+                            // tx.send(
+                            //     NetworkPackage::Addressed {
+                            //         src: Some((*src).into()),
+                            //         dst: Some((*dst).into()),
+                            //         data: package_data::SetReminders {
+                            //             seq: seq.fetch_add(1, Ordering::Relaxed),
+                            //             reminders: new_reminders,
+                            //         }
+                            //         .into(),
+                            //     }
+                            //     .to_static(),
+                            // )
+                            // .await?;
                         }
                         Some(SpaCommand::KeyPress { key, pack_type }) => {
                             tx.send(
