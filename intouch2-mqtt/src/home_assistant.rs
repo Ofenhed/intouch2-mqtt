@@ -6,6 +6,8 @@ pub struct ConfigureDevice {
     pub name: Arc<str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sw_version: Option<Arc<str>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub configuration_url: Option<Arc<str>>,
     #[serde(flatten)]
     pub extra_args: HashMap<&'static str, serde_json::Value>,
 }

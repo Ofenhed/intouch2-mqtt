@@ -561,6 +561,9 @@ async fn main() -> anyhow::Result<()> {
                 name: spa_name.into(),
                 sw_version: Some(spa_version.into()),
                 extra_args: Default::default(),
+                configuration_url: env::var("HOSTNAME").map(|hostname| {
+                    format!("homeassistant://navigate/hassio/addon/{hostname}/config")
+                }),
             })?;
             let spa = spa.clone();
             join_set.spawn(async move {

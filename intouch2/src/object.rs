@@ -287,7 +287,7 @@ pub mod package_data {
             b"SUPDT": Tag,
             seq: u8,
         },
-        FilesRequest(b"SFILE?": Simple),
+        FilesRequest(b"SFILE": Tailing),
         Files(b"FILES": Tailing),
         Unknown(b"": Tailing),
       }
