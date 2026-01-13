@@ -109,7 +109,7 @@ impl GenericWatchMap<serde_json::Value> for WatchMap<mpsc::Receiver<()>, (), ser
                     self.value = None;
                     Ok(())
                 }
-                None => Err(MappingError::ChannelClosed("WatchMap<mpsc::Receiver>")).into(),
+                None => Err(MappingError::ChannelClosed("WatchMap<mpsc::Receiver>")),
             }
         })
     }
@@ -133,6 +133,7 @@ impl<W, I, T> WatchMap<W, I, T> {
 }
 
 impl MappingType {
+    #[allow(clippy::type_complexity)]
     pub fn subscribe<'a, T: Send + 'static>(
         &'a self,
         spa: &'a SpaConnection,
@@ -150,6 +151,7 @@ impl MappingType {
             ) -> Box<dyn GenericWatchMap<serde_json::Value>> {
                 Box::new(x)
             }
+            #[allow(clippy::borrowed_box)]
             match self {
                 MappingType::Special(SpecialMode::Multiple(children)) => {
                     let (tx, rx) = mpsc::channel(children.len());
@@ -449,7 +451,7 @@ impl Mapping {
         mqtt: &mut MqttSession,
     ) -> Result<(), MappingError> {
         let span_add_generic = trace_span!("add generic");
-        let config_topic = mqtt.topic(&mapping.mqtt_type, &mapping.unique_id, Topic::Config);
+        let config_topic = mqtt.topic(mapping.mqtt_type, mapping.unique_id, Topic::Config);
         let mut counter = 0;
         let topics = mqtt.topic_generator();
         let GenericMapping {
@@ -462,7 +464,7 @@ impl Mapping {
         } = mapping;
         let mut next_topic = |topic: Topic| {
             counter += 1;
-            topics.topic(&mqtt_type, &format!("{unique_id}/{counter}"), topic)
+            topics.topic(mqtt_type, &format!("{unique_id}/{counter}"), topic)
         };
         let next_qos = {
             let publisher = mqtt.publisher();
@@ -561,7 +563,7 @@ impl Mapping {
                             let state = state.clone();
                             let mut sender = mqtt.publisher();
                             let mut data_subscription =
-                                state.subscribe(&spa, &mut self.jobs).await?;
+                                state.subscribe(spa, &mut self.jobs).await?;
                             let mut initialized = self.active.subscribe();
                             let mutex = Arc::new(Mutex::new(())).try_lock_owned().expect(
                                 "This mutex was just created, the lock should be guaranteed",
@@ -573,12 +575,14 @@ impl Mapping {
                             self.jobs.spawn(async move {
                                 loop {
                                     if *initialized.borrow_and_update() {
-                                        break
+                                        break;
                                     }
-                                    if initialized.changed().await.is_err() {
-                                        if !*initialized.borrow_and_update() {
-                                            return Err(MappingError::PublisherDeadlockedByFailedInitialization);
-                                        }
+                                    if initialized.changed().await.is_err()
+                                        && !*initialized.borrow_and_update()
+                                    {
+                                        return Err(
+                                            MappingError::PublisherDeadlockedByFailedInitialization,
+                                        );
                                     }
                                 }
                                 loop {
@@ -620,7 +624,7 @@ impl Mapping {
                                                 payload,
                                                 ..
                                             }),
-                                        ) if topic_name == &&topic => {
+                                        ) if topic_name == &topic => {
                                             let Ok(valid_str) =
                                                 String::from_utf8(Vec::from(*payload))
                                             else {
@@ -689,9 +693,9 @@ impl Mapping {
                                                 payload,
                                                 ..
                                             }),
-                                        ) if topic_name == &&topic => {
+                                        ) if topic_name == &topic => {
                                             let Ok(serde_json::Value::Object(json_object)) =
-                                                serde_json::from_slice(*payload)
+                                                serde_json::from_slice(payload)
                                             else {
                                                 warn!(parent: &span_add_generic, "Invalid reminder payload from MQTT: {payload:?}");
                                                 continue;

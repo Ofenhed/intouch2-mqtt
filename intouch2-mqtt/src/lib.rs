@@ -70,6 +70,12 @@ pub struct Buffers<const COUNT: usize, T> {
     size: usize,
 }
 
+impl<const COUNT: usize, T> Default for Buffers<COUNT, T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const COUNT: usize, T> Buffers<COUNT, T> {
     pub fn new() -> Self {
         #[allow(deprecated)]

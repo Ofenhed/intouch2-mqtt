@@ -27,6 +27,7 @@ use tokio::{
 
 use crate::{port_forward::SpaPipe, WithBuffer};
 
+#[allow(clippy::type_complexity)]
 pub struct SpaConnection {
     pipe: Arc<SpaPipe>,
     src: Arc<[u8]>,
@@ -135,6 +136,10 @@ impl SpaConnection {
         self.state.lock().await.len()
     }
 
+    pub async fn is_empty(&self) -> bool {
+        self.state.lock().await.is_empty()
+    }
+
     pub async fn new(memory_size: usize, pipe: SpaPipe) -> Result<Self, SpaError> {
         pipe.tx
             .send(NetworkPackage::Hello(Cow::Borrowed(b"1")))
@@ -150,7 +155,7 @@ impl SpaConnection {
         let (dst, name): (Arc<[u8]>, Box<[u8]>) = {
             let pos = receiver
                 .iter()
-                .position(|x| *x == '|' as u8)
+                .position(|x| *x == b'|')
                 .unwrap_or(receiver.len());
             (receiver[0..pos].into(), receiver[pos + 1..].into())
         };
@@ -223,7 +228,7 @@ impl SpaConnection {
                     });
                 }
                 NetworkPackage::Hello(_) => continue,
-                msg => break Err(SpaError::UnexpectedAnswer(msg.into())),
+                msg => break Err(SpaError::UnexpectedAnswer(msg)),
             };
         }?;
         Ok(spa_object)
@@ -373,7 +378,7 @@ impl SpaConnection {
                                 continue;
                             };
                             let new_reminders = old_reminders
-                                .into_iter()
+                                .iter()
                                 .map(|reminder| {
                                     let mut new_reminder = reminder.clone();
                                     let index_name = <&'static str>::from(reminder.index);
@@ -575,7 +580,7 @@ impl SpaConnection {
                         let timeout = Duration::from_secs(5);
                         let timeout_at = time::Instant::now() + timeout;
                         loop {
-                            match time::timeout_at(timeout_at.clone(), rx.recv()).await {
+                            match time::timeout_at(timeout_at, rx.recv()).await {
                                 Ok(recv) => match recv? {
                                     NetworkPackage::Addressed {
                                         data:
@@ -594,7 +599,7 @@ impl SpaConnection {
                                         }
                                         let end = data_read + data.len();
                                         let mut gecko_data = gecko_data.lock().await;
-                                        gecko_data[data_read..end].copy_from_slice(&*data);
+                                        gecko_data[data_read..end].copy_from_slice(&data);
                                         if end == usize::from(gecko_data_len) {
                                             notify_dirty.notify_waiters();
                                             break 'retry;
@@ -634,9 +639,9 @@ impl SpaConnection {
                                     data: new_data,
                                     ..
                                 }),
-                            dst,
+                            dst: Some(ref dst),
                             ..
-                        } if matches!(dst, Some(ref dst) if *dst == spa_id.as_ref()) => {
+                        } if *dst == spa_id.as_ref() => {
                             let mut data = gecko_data.lock().await;
                             let pos = usize::from(pos);
                             let old_data: &mut [u8] = &mut data[pos..pos + new_data.len()];

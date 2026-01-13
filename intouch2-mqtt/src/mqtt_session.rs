@@ -52,7 +52,7 @@ impl MqttPacket {
     }
 }
 
-unsafe fn transmute_lifetime<'a, 'b, T: ?Sized>(from: &'a T) -> &'b T {
+unsafe fn transmute_lifetime<'b, T: ?Sized>(from: &T) -> &'b T {
     std::mem::transmute(from)
 }
 
@@ -204,7 +204,7 @@ pub struct PacketSender {
 
 impl PacketSender {
     pub async fn send(&mut self, packet: &Packet<'_>) -> Result<(), MqttError> {
-        let len = encode_slice(&packet, self.buffer.as_mut())?;
+        let len = encode_slice(packet, self.buffer.as_mut())?;
         self.sender.send(self.buffer[..len].into()).await?;
         Ok(())
     }
@@ -234,7 +234,7 @@ impl PacketPublisher {
             response: tx,
         };
         self.sender.send(package).await?;
-        Ok(rx.await??)
+        rx.await?
     }
     pub fn next_pid(&self) -> Pid {
         self.pid.next_pid()
@@ -323,7 +323,7 @@ impl Session {
                             Packet::Suback(Suback { pid, return_codes }) if pid == &subscribe_pid => {
                                 let failed: Box<_> = Vec::from(topics.as_ref())
                                     .into_iter()
-                                    .zip(return_codes.into_iter())
+                                    .zip(return_codes.iter())
                                     .filter_map(|(topic, return_code)| {
                                         if !matches!(return_code, SubscribeReturnCodes::Success(_)) {
                                             Some(topic)
@@ -494,7 +494,7 @@ impl Session {
     }
 
     pub async fn send(&mut self, packet: &Packet<'_>) -> Result<(), MqttError> {
-        let encoded_len = encode_slice(&packet, self.buffer.as_mut())?;
+        let encoded_len = encode_slice(packet, self.buffer.as_mut())?;
         self.stream.write_all(&self.buffer[..encoded_len]).await?;
         Ok(())
     }
@@ -502,20 +502,16 @@ impl Session {
 
 impl SessionBuilder<'_> {
     pub async fn connect(self) -> Result<Session, MqttError> {
-        let last_will = if let Some(topic) = self.availability_topic.as_deref() {
-            Some(LastWill {
-                topic,
-                message: b"offline",
-                qos: QoS::AtMostOnce,
-                retain: false,
-            })
-        } else {
-            None
-        };
+        let last_will = self.availability_topic.as_deref().map(|topic| LastWill {
+            topic,
+            message: b"offline",
+            qos: QoS::AtMostOnce,
+            retain: false,
+        });
         let mut connect = Connect {
             protocol: Protocol::MQTT311,
             keep_alive: self.keep_alive,
-            client_id: CLIENT_ID.into(),
+            client_id: CLIENT_ID,
             clean_session: true,
             last_will,
             username: None,

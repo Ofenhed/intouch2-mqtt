@@ -327,7 +327,7 @@ async fn main() -> anyhow::Result<()> {
         let mqtt_availability = args.mqtt_availability_topic.as_deref().map(|availability| {
             Arc::from(
                 &*PathBuf::from(&*args.mqtt_base_topic)
-                    .join(&*availability)
+                    .join(availability)
                     .to_string_lossy(),
             )
         });
@@ -576,7 +576,7 @@ async fn main() -> anyhow::Result<()> {
                     {
                         for entity in &args.entities {
                             mapping
-                                .add_generic(entity.unwrap().clone(), &*spa, &mut mqtt)
+                                .add_generic(entity.unwrap().clone(), &spa, &mut mqtt)
                                 .await.in_span(&span_configure_device_mapping)?;
                         }
                     }

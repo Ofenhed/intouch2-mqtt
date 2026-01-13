@@ -69,7 +69,7 @@ fn parse_addressed_package<'a>(input: &'a [u8]) -> IResult<&'a [u8], NetworkPack
 
 impl<'a> DatasContent<'a> for u8 {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        Ok(nom::number::complete::u8(input)?)
+        nom::number::complete::u8(input)
     }
 
     fn compose(&self) -> Cow<'a, [u8]> {
@@ -79,7 +79,7 @@ impl<'a> DatasContent<'a> for u8 {
 
 impl<'a> DatasContent<'a> for u16 {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        Ok(nom::number::complete::be_u16(input)?)
+        nom::number::complete::be_u16(input)
     }
 
     fn compose(&self) -> Cow<'a, [u8]> {
@@ -95,7 +95,7 @@ impl<'a, T1: DatasContent<'a>, T2: DatasContent<'a>> DatasContent<'a> for (T1, T
     }
 
     fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Owned([self.0.compose(), self.1.compose()].concat().into())
+        Cow::Owned([self.0.compose(), self.1.compose()].concat())
     }
 }
 
@@ -142,7 +142,7 @@ impl<T: ?Sized> Default for Take<T> {
     fn default() -> Self {
         Self {
             len: None,
-            _phantom: std::marker::PhantomData::default(),
+            _phantom: std::marker::PhantomData,
         }
     }
 }
@@ -158,7 +158,7 @@ impl<'a> TakeMultiple<'a> for Take<[u8]> {
     fn parse_multiple(self, input: &'a [u8]) -> nom::IResult<&'a [u8], Self::Type> {
         if let Some(len) = self.len {
             let (input, result) =
-                nom::bytes::complete::take::<usize, _, InnerNomError<'a>>(len as usize)(input)?;
+                nom::bytes::complete::take::<usize, _, InnerNomError<'a>>(len)(input)?;
             Ok((input, Cow::Borrowed(result)))
         } else {
             Ok((&[], Cow::Borrowed(input)))
@@ -173,11 +173,7 @@ impl<'a> DatasContent<'a> for StatusChange<'a> {
     }
 
     fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Owned(
-            [self.change.to_be_bytes().as_ref(), self.data.as_ref()][..]
-                .concat()
-                .into(),
-        )
+        Cow::Owned([self.change.to_be_bytes().as_ref(), self.data.as_ref()][..].concat())
     }
 }
 
@@ -240,8 +236,7 @@ impl<'a> DatasContent<'a> for ReminderInfo {
                 self.data.to_le_bytes().as_ref(),
                 if self.valid { b"\x01" } else { b"\x00" },
             ][..]
-                .concat()
-                .into(),
+                .concat(),
         )
     }
 }

@@ -95,9 +95,7 @@ fn unpack_owned_cell<'a, T>(
     unsafe { &*from.get() }
 }
 
-fn unpack_cell<'a, T>(
-    from: &'a Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>,
-) -> &'a ForwardMappingInfo<T> {
+fn unpack_cell<T>(from: &Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>) -> &ForwardMappingInfo<T> {
     unsafe { &*from.get() }
 }
 
@@ -107,9 +105,10 @@ fn unpack_owned_cell_mut<'a, T>(
     unsafe { &mut *from.get() }
 }
 
-fn unpack_cell_mut<'a, T>(
-    from: &'a Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>,
-) -> &'a mut ForwardMappingInfo<T> {
+#[allow(clippy::mut_from_ref)]
+fn unpack_cell_mut<T>(
+    from: &Arc<SyncUnsafeCell<ForwardMappingInfo<T>>>,
+) -> &mut ForwardMappingInfo<T> {
     unsafe { &mut *from.get() }
 }
 
@@ -130,6 +129,9 @@ impl<T: Send + Sync> ForwardMapping<T> {
         let len = self.ids.len();
         debug_assert_eq!(self.addrs.len(), len);
         len
+    }
+    pub fn is_empty(&self) -> bool {
+        self.ids.is_empty()
     }
     pub fn clear_timeouts(
         &mut self,
@@ -164,19 +166,15 @@ impl<T: Send + Sync> ForwardMapping<T> {
         if let Some((_, new_addr, id)) = self._remove_id(id.borrow()) {
             if new_addr.as_ref() == addr.borrow() {
                 (new_addr, id)
+            } else if let Some((_, addr, _)) = self._remove_addr(addr.borrow()) {
+                (addr, id)
             } else {
-                if let Some((_, addr, _)) = self._remove_addr(addr.borrow()) {
-                    (addr, id)
-                } else {
-                    (addr.into(), id)
-                }
+                (addr.into(), id)
             }
+        } else if let Some((_, addr, _)) = self._remove_addr(addr.borrow()) {
+            (addr, id.into())
         } else {
-            if let Some((_, addr, _)) = self._remove_addr(addr.borrow()) {
-                (addr, id.into())
-            } else {
-                (addr.into(), id.into())
-            }
+            (addr.into(), id.into())
         }
     }
 

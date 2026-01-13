@@ -44,13 +44,10 @@ impl<T> Deref for SpannedError<T> {
 
     fn deref(&self) -> &Self::Target {
         if let Ok(mut g) = self.guard.try_lock() {
-            match &(*g) {
-                MaybeEntered::Span(s) => {
-                    *g = MaybeEntered::Entered {
-                        _guard: s.clone().entered(),
-                    }
+            if let MaybeEntered::Span(s) = &(*g) {
+                *g = MaybeEntered::Entered {
+                    _guard: s.clone().entered(),
                 }
-                _ => (),
             }
         }
         &self.err

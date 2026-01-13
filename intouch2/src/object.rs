@@ -32,7 +32,7 @@ impl<const N: usize> ToStatic for Cow<'_, [u8; N]> {
     fn to_static(&self) -> Self::Static {
         match *self {
             Cow::Owned(x) => Cow::Owned(x),
-            Cow::Borrowed(x) => Cow::Owned(x.clone()),
+            Cow::Borrowed(x) => Cow::Owned(*x),
         }
     }
 }
@@ -348,10 +348,10 @@ impl std::fmt::Display for NetworkPackage<'_> {
             NetworkPackage::Addressed { src, dst, data } => f.write_fmt(format_args!(
                 "Addressed({}, {}, {})",
                 src.as_ref()
-                    .map(|x| String::from_utf8_lossy(&x))
+                    .map(|x| String::from_utf8_lossy(x))
                     .unwrap_or("NULL".into()),
                 dst.as_ref()
-                    .map(|x| String::from_utf8_lossy(&x))
+                    .map(|x| String::from_utf8_lossy(x))
                     .unwrap_or("NULL".into()),
                 data.display()
             )),

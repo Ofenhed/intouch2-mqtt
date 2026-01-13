@@ -71,6 +71,12 @@ pub struct FullPackagePipe {
     pub spa: SpaPipe,
 }
 
+impl Default for FullPackagePipe {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FullPackagePipe {
     pub fn new() -> Self {
         let broadcast_sender = Arc::new(broadcast::Sender::new(30));
@@ -258,7 +264,7 @@ impl PortForward {
         let span_dump_traffic = trace_span!(parent: &span_port_forward, "dump traffic");
         let mut spa_hello = SpaHello::new(&self.spa_hello)?;
         let hello_response = Arc::new(RwLock::new(compose_network_data(&NetworkPackage::Hello(
-            Cow::Borrowed(&spa_hello.id),
+            Cow::Borrowed(spa_hello.id),
         ))));
 
         #[derive(Debug)]
@@ -480,7 +486,7 @@ impl PortForward {
                                 info!(
                                     parent: &span_port_forward,
                                     "New client {} at {}",
-                                    String::from_utf8_lossy(&src),
+                                    String::from_utf8_lossy(src),
                                     source_addr
                                 );
                             }
@@ -560,7 +566,7 @@ impl PortForward {
                                 ..
                             },
                         ) => {
-                            if let Some(ref mut forward_info) = self.forwards.get_id_mut(&dst) {
+                            if let Some(ref mut forward_info) = self.forwards.get_id_mut(dst) {
                                 forward_info.got_reply();
                                 match *forward_info.addr() {
                                     ForwardAddr::Pipe => {
