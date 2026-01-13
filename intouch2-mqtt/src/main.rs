@@ -566,7 +566,7 @@ async fn main() -> anyhow::Result<()> {
                     .map(|hostname| {
                         format!(
                             "homeassistant://hassio/addon/{hostname}/config",
-                            hostname = hostname.replace("_", "-")
+                            hostname = hostname.replacen("-", "_", 1)
                         )
                     })
                     .ok()
