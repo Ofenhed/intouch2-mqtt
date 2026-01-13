@@ -50,9 +50,10 @@ pub struct Mapping {
     jobs: JoinSet<Result<(), MappingError>>,
     uninitialized: Vec<Arc<Mutex<()>>>,
     active: sync::watch::Sender<bool>,
+    topic_cache: HashMap<MqttType, serde_json::Value>,
 }
 
-#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(serde::Deserialize, Debug, Hash, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SpecialMode<T> {
     Reminders,
@@ -61,7 +62,7 @@ pub enum SpecialMode<T> {
     Multiple(Box<[T]>),
 }
 
-#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(serde::Deserialize, Debug, Hash, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(untagged)]
 pub enum MappingType {
     U8 { u8_addr: u16 },
@@ -249,7 +250,7 @@ impl MappingType {
     }
 }
 
-#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(serde::Deserialize, Debug, Hash, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(untagged)]
 pub enum CommandStatusType {
     U8 { u8_addr: u16 },
@@ -279,7 +280,7 @@ impl CommandStatusType {
     }
 }
 
-#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(serde::Deserialize, Debug, Hash, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(untagged)]
 pub enum CommandMappingType {
     SetStatus {
@@ -315,7 +316,7 @@ impl MappingType {
     }
 }
 
-#[derive(serde::Deserialize, Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(serde::Deserialize, Debug, Clone, Hash, PartialEq, Eq, serde::Serialize)]
 #[serde(untagged)]
 pub enum MqttType {
     State { state: MappingType },
@@ -495,10 +496,10 @@ impl Mapping {
                     self,
                     config: &mut home_assistant::ConfigureGeneric,
                     topic: serde_json::Value,
-                ) {
+                ) -> serde_json::Value {
                     match self {
                         Self::Args((key, _)) => {
-                            config.args.insert(key.as_ref(), topic);
+                            config.args.insert(key.as_ref(), topic.clone());
                         }
                         Self::Availability(AvailabilityMapping {
                             payload_available,
@@ -510,7 +511,7 @@ impl Mapping {
                                 payload_available: payload_available.clone(),
                                 payload_not_available: payload_not_available.clone(),
                                 value_template: value_template.clone(),
-                                topic,
+                                topic: topic.clone(),
                             })
                             .expect(
                                 "Any value that has gotten this far will be convertable to json",
@@ -531,6 +532,7 @@ impl Mapping {
                             }
                         }
                     }
+                    topic
                 }
             }
             for item in mqtt_values
@@ -538,6 +540,16 @@ impl Mapping {
                 .map(ConfigSource::Args)
                 .chain(availability.iter().map(ConfigSource::Availability))
             {
+                let entry = match self.topic_cache.entry(item.value()) {
+                    Entry::Vacant(e) => Some((e, item)),
+                    Entry::Occupied(e) => {
+                        item.add(&mut config, e.get().clone());
+                        None
+                    }
+                };
+                let Some((save_cache, item)) = entry else {
+                    continue;
+                };
                 match item.value() {
                     MqttType::State { state } => {
                         let topic = next_topic(Topic::State);
@@ -579,7 +591,7 @@ impl Mapping {
                                 }
                             });
                         }
-                        item.add(&mut config, topic.into());
+                        save_cache.insert(item.add(&mut config, topic.into()));
                     }
                     MqttType::Command { command } => {
                         let topic = next_topic(Topic::Set);
@@ -701,9 +713,11 @@ impl Mapping {
                                 }
                             });
                         }
-                        item.add(&mut config, topic.into());
+                        save_cache.insert(item.add(&mut config, topic.into()));
                     }
-                    MqttType::Value(value) => item.add(&mut config, value),
+                    MqttType::Value(value) => {
+                        save_cache.insert(item.add(&mut config, value));
+                    }
                 };
             }
             serde_json::to_vec(&config)?
@@ -746,6 +760,7 @@ impl Mapping {
             device,
             uninitialized: vec![],
             active: sync::watch::Sender::new(false),
+            topic_cache: Default::default(),
         })
     }
 }
