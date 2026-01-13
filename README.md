@@ -219,9 +219,10 @@ entities_json:
      "type": "switch",
      "availability_topic": "intouch2/availability",
      "command_topic": "intouch2-loopback/reset_buttons/availability",
+     "state_topic": "intouch2-loopback/reset_buttons/availability",
      "payload_on": "online",
      "payload_off": "offline",
-     "value_template": "{{ value == 'online' }}"
+     "value_template": "{{ 'offline' if value != 'online' else 'online' }}"
     }
   - |-
     {"name": "Change Water",
