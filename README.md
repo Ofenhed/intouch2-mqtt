@@ -171,6 +171,9 @@ entities_json:
        {"topic": "intouch2-loopback/reset_buttons/availability",
         "value_template": "{{ 'offline' if value != 'online' else 'online' }}"
        },
+       {"topic": {"state": "reminders"},
+        "value_template": "{{ 'offline' if value_json is none else 'online' }}"
+       },
        {"topic": "intouch2/availability"}
      ],
      "command_topic": {"command": "reminders"},
@@ -185,6 +188,9 @@ entities_json:
        {"topic": "intouch2-loopback/reset_buttons/availability",
         "value_template": "{{ 'offline' if value != 'online' else 'online' }}"
        },
+       {"topic": {"state": "reminders"},
+        "value_template": "{{ 'offline' if value_json is none else 'online' }}"
+       },
        {"topic": "intouch2/availability"}
      ],
      "command_topic": {"command": "reminders"},
@@ -198,6 +204,9 @@ entities_json:
      "availability": [
        {"topic": "intouch2-loopback/reset_buttons/availability",
         "value_template": "{{ 'offline' if value != 'online' else 'online' }}"
+       },
+       {"topic": {"state": "reminders"},
+        "value_template": "{{ 'offline' if value_json is none else 'online' }}"
        },
        {"topic": "intouch2/availability"}
      ],
@@ -233,7 +242,12 @@ entities_json:
      "unique_id": "spa_reminder_rinse_filter",
      "type": "sensor",
      "device_class": "duration",
-     "availability_topic": "intouch2/availability",
+     "availability": [
+       {"topic": "intouch2/availability"},
+       {"topic": {"state": "reminders"},
+        "value_template": "{{ 'offline' if value_json is none else 'online' }}"
+       }
+     ],
      "state_topic": {"state": "reminders"},
      "value_template": "{{ value_json['RinseFilter'] }}"
     }
@@ -243,7 +257,12 @@ entities_json:
      "type": "sensor",
      "device_class": "duration",
      "optimistic": false,
-     "availability_topic": "intouch2/availability",
+     "availability": [
+       {"topic": "intouch2/availability"},
+       {"topic": {"state": "reminders"},
+        "value_template": "{{ 'offline' if value_json is none else 'online' }}"
+       }
+     ],
      "state_topic": {"state": "reminders"},
      "value_template": "{{ value_json['CleanFilter'] }}"
     }

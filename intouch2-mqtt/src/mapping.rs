@@ -326,9 +326,12 @@ pub enum MqttType {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct AvailabilityMapping<'a, T> {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub payload_available: Option<Cow<'a, str>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub payload_not_available: Option<Cow<'a, str>>,
     pub topic: T,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub value_template: Option<Cow<'a, str>>,
 }
 
