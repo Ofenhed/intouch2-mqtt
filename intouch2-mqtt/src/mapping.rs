@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::HashMap,
     future::Future,
     mem,
@@ -372,6 +373,8 @@ pub struct GenericMapping {
     pub name: &'static str,
     pub unique_id: &'static str,
     #[serde(default)]
+    pub availability: Vec<home_assistant::AvailabilityMapping<'static>>,
+    #[serde(default)]
     pub qos: u8,
     #[serde(flatten)]
     pub mqtt_values: HashMap<&'static str, MqttType>,
@@ -483,6 +486,7 @@ impl Mapping {
         let GenericMapping {
             mqtt_type,
             name: mqtt_name,
+            availability,
             unique_id,
             mqtt_values,
             qos,
@@ -504,9 +508,10 @@ impl Mapping {
         let json_config = {
             let mut config = home_assistant::ConfigureGeneric {
                 base: home_assistant::ConfigureBase {
-                    name: &mqtt_name,
-                    unique_id: &unique_id,
-                    device: &device,
+                    name: Cow::Borrowed(mqtt_name),
+                    unique_id: Cow::Borrowed(unique_id),
+                    device: Cow::Borrowed(&device),
+                    availability,
                     qos,
                 },
                 args: Default::default(),

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 #[derive(serde::Serialize, Clone)]
 pub struct ConfigureDevice {
@@ -10,11 +10,21 @@ pub struct ConfigureDevice {
     pub extra_args: HashMap<&'static str, serde_json::Value>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct AvailabilityMapping<'a> {
+    pub payload_available: Option<Cow<'a, str>>,
+    pub payload_not_available: Option<Cow<'a, str>>,
+    pub topic: Cow<'a, str>,
+    pub value_template: Option<Cow<'a, str>>,
+}
+
 #[derive(serde::Serialize)]
 pub struct ConfigureBase<'a> {
-    pub name: &'a str,
-    pub unique_id: &'a str,
-    pub device: &'a ConfigureDevice,
+    pub name: Cow<'a, str>,
+    pub unique_id: Cow<'a, str>,
+    pub device: Cow<'a, ConfigureDevice>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub availability: Vec<AvailabilityMapping<'a>>,
     pub qos: u8,
 }
 
