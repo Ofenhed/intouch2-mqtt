@@ -280,16 +280,20 @@ command.
 All of these will require some data transformation first, which is done with templating.
 
 ### State object
-The state object can be either the special string `"watercare_mode"`, or one or
-more addresses. The type refers to the data at that address, so `{"u8_addr":
-279}` will update when the single byte on 279 changes. All of these
-alternatives are used in the example above.
+The state object can be either the special string `"watercare_mode"`,
+`"reminders"`, or one or more addresses. The type refers to the data at that
+address, so `{"u8_addr": 279}` will update when the single byte on 279 changes.
+All of these alternatives are used in the example above. Reminders will give
+you a dictionary of strings (such as `"ChangeWater"`) mapped to the days before
+it should be performed.
 
 ### Command object
-The command object can either be the special string `"watercare_mode"`, a
-single address (for raw memory writes), or a keypress. I don't know what all
-the fields in the raw write mode actually mean, but since they are static it
-hasn't been an issue.
+The command object can either be the special string `"watercare_mode"`,
+`"reminders"`, a single address (for raw memory writes), or a keypress. I don't
+know what all the fields in the raw write mode actually mean, but since they
+are static it hasn't been an issue. Reminders are set by returning a dictionary
+similar to the state received from the reminders state, but you can omit the
+keys you don't want to change.
 
 The raw writes expect to get a raw bytestring matching the size of the chosen
 type, so one byte for a `u8` and two for `u16`.
@@ -301,4 +305,6 @@ not to be changed. In the example above, pump 1 is a two step pump, which is
 handled by pressing the button 0-2 times whenever a certain speed is requested.
 
 ## Usage
-To use this package, you will have to add [https://github.com/Ofenhed/hassio-addons](https://github.com/Ofenhed/hassio-addons) as a addon source in Home Assistant, and install the addon.
+To use this package, you will have to add
+[https://github.com/Ofenhed/hassio-addons](https://github.com/Ofenhed/hassio-addons)
+as a addon source in Home Assistant, and install the addon.
