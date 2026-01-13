@@ -14,6 +14,7 @@ use serde_json::json;
 use std::{
     borrow::Cow,
     collections::VecDeque,
+    env,
     net::IpAddr,
     path::PathBuf,
     pin::pin,
@@ -561,10 +562,15 @@ async fn main() -> anyhow::Result<()> {
                 name: spa_name.into(),
                 sw_version: Some(spa_version.into()),
                 extra_args: Default::default(),
-                // configuration_url: env::var("HOSTNAME")
-                //    .map(|hostname| format!("homeassistant://hassio/addon/{hostname}/config"))
-                //    .ok()
-                //    .map(Into::into),
+                configuration_url: env::var("HOSTNAME")
+                    .map(|hostname| {
+                        format!(
+                            "homeassistant://hassio/addon/{hostname}/config",
+                            hostname = hostname.replace("_", "-")
+                        )
+                    })
+                    .ok()
+                    .map(Into::into),
             })?;
             let spa = spa.clone();
             join_set.spawn(async move {
