@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Update local toolchain
+        run: |
+          rustup update
+          rustup install nightly
+          rustup default nightly
+          rustup component add clippy rustfmt
+
+      - name: Toolchain info
+        run: |
+          cargo --version --verbose
+          rustc --version
+          # cargo clippy --version # I'll get to it, some day
+
+      - name: Lint
+        run: |
+          cargo fmt -- --check
+#          cargo clippy -- -D warnings
+
+      - name: Test
+        run: |
+          cargo check
+          cargo test --all
+
+      - name: Build
+        run: |
+          cargo build --release
