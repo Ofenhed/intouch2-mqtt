@@ -135,6 +135,7 @@ entities_json:
      "temperature_high_command_template": "{{ (value * 18) | int }}",
      "temperature_low_state_topic": {"state": {"u16_addr": 275}},
      "temperature_low_state_template": "{{ (value | float) / 18.0 }}",
+     "temperature_low_command_topic": "/dev/null",
      "current_temperature_topic": {"state": {"u16_addr": 277}},
      "current_temperature_template": "{{ (value | float) / 18.0 }}",
      "max_temp": 40,
@@ -166,7 +167,11 @@ entities_json:
     {"name": "Reset Change Water",
      "unique_id": "spa_reset_reminder_change_water",
      "type": "button",
+     "icon": "mdi:waves-arrow-up",
      "device_class": "restart",
+     "command_topic": {"command": "reminders"},
+     "command_template": "{{ {'ChangeWater': 120 } | tojson }}",
+     "availability_mode": "all",
      "availability": [
        {"topic": "intouch2-loopback/reset_buttons/availability",
         "value_template": "{{ 'offline' if value != 'online' else 'online' }}"
@@ -175,15 +180,17 @@ entities_json:
         "value_template": "{{ 'offline' if value_json is none else 'online' }}"
        },
        {"topic": "intouch2/availability"}
-     ],
-     "command_topic": {"command": "reminders"},
-     "command_template": "{{ {'ChangeWater': 120 } | tojson }}"
+     ]
     }
   - |-
     {"name": "Reset Rinse Filter",
      "unique_id": "spa_reset_reminder_rinse_filter",
      "type": "button",
+     "icon": "mdi:water-pump-off",
      "device_class": "restart",
+     "command_topic": {"command": "reminders"},
+     "command_template": "{{ {'RinseFilter': 30 } | tojson }}",
+     "availability_mode": "all",
      "availability": [
        {"topic": "intouch2-loopback/reset_buttons/availability",
         "value_template": "{{ 'offline' if value != 'online' else 'online' }}"
@@ -192,15 +199,17 @@ entities_json:
         "value_template": "{{ 'offline' if value_json is none else 'online' }}"
        },
        {"topic": "intouch2/availability"}
-     ],
-     "command_topic": {"command": "reminders"},
-     "command_template": "{{ {'RinseFilter': 30 } | tojson }}"
+     ]
     }
   - |-
     {"name": "Reset Clean Filter",
      "unique_id": "spa_reset_reminder_clean_filter",
      "type": "button",
+     "icon": "mdi:dishwasher-off",
      "device_class": "restart",
+     "command_topic": {"command": "reminders"},
+     "command_template": "{{ {'CleanFilter': 60 } | tojson }}",
+     "availability_mode": "all",
      "availability": [
        {"topic": "intouch2-loopback/reset_buttons/availability",
         "value_template": "{{ 'offline' if value != 'online' else 'online' }}"
@@ -209,15 +218,13 @@ entities_json:
         "value_template": "{{ 'offline' if value_json is none else 'online' }}"
        },
        {"topic": "intouch2/availability"}
-     ],
-     "command_topic": {"command": "reminders"},
-     "command_template": "{{ {'CleanFilter': 60 } | tojson }}"
+     ]
     }
   - |-
     {"name": "Allow Reminder Resets",
      "unique_id": "spa_allow_reset_reminder",
      "type": "switch",
-     "availability_topic": "intouch2/availability",
+     "icon": "mdi:calendar-lock",
      "command_topic": "intouch2-loopback/reset_buttons/availability",
      "state_topic": "intouch2-loopback/reset_buttons/availability",
      "payload_on": "online",
@@ -228,44 +235,52 @@ entities_json:
     {"name": "Change Water",
      "unique_id": "spa_reminder_change_water",
      "type": "sensor",
+     "icon": "mdi:water-sync",
+     "device_class": "duration",
+     "unit_of_measurement": "d",
+     "state_topic": {"state": "reminders"},
+     "value_template": "{{ value_json['ChangeWater'] }}",
+     "availability_mode": "all",
      "availability": [
        {"topic": "intouch2/availability"},
        {"topic": {"state": "reminders"},
         "value_template": "{{ 'offline' if value_json is none else 'online' }}"
        }
-     ],
-     "device_class": "duration",
-     "state_topic": {"state": "reminders"},
-     "value_template": "{{ value_json['ChangeWater'] }}"
+     ]
     }
   - |-
     {"name": "Rinse Filter",
      "unique_id": "spa_reminder_rinse_filter",
      "type": "sensor",
+     "icon": "mdi:water-pump",
      "device_class": "duration",
+     "unit_of_measurement": "d",
+     "state_topic": {"state": "reminders"},
+     "value_template": "{{ value_json['RinseFilter'] }}",
+     "availability_mode": "all",
      "availability": [
        {"topic": "intouch2/availability"},
        {"topic": {"state": "reminders"},
         "value_template": "{{ 'offline' if value_json is none else 'online' }}"
        }
-     ],
-     "state_topic": {"state": "reminders"},
-     "value_template": "{{ value_json['RinseFilter'] }}"
+     ]
     }
   - |-
     {"name": "Clean Filter",
      "unique_id": "spa_reminder_clean_filter",
      "type": "sensor",
+     "icon": "mdi:dishwasher",
      "device_class": "duration",
-     "optimistic": false,
+     "unit_of_measurement": "d",
+     "state_topic": {"state": "reminders"},
+     "value_template": "{{ value_json['CleanFilter'] }}",
+     "availability_mode": "all",
      "availability": [
        {"topic": "intouch2/availability"},
        {"topic": {"state": "reminders"},
         "value_template": "{{ 'offline' if value_json is none else 'online' }}"
        }
-     ],
-     "state_topic": {"state": "reminders"},
-     "value_template": "{{ value_json['CleanFilter'] }}"
+     ]
     }
 mqtt_availability_topic: availability
 mqtt_base_topic: intouch2
