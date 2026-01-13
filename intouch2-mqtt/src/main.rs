@@ -90,7 +90,7 @@ impl<T: Deserialize<'static>> JsonValue<T> {
         value
     }
 
-    fn leaking_parse(&mut self) -> Result<(), anyhow::Error> {
+    fn leaking_parse(&mut self) -> Result<&T, anyhow::Error> {
         let raw_value: &'static str = {
             let JsonValue::Raw(raw_value) = self else {
                 panic!("leaking_parse can only be used on raw JsonValue")
@@ -99,7 +99,10 @@ impl<T: Deserialize<'static>> JsonValue<T> {
         };
         let parsed = serde_json::from_str(raw_value).context(raw_value)?;
         *self = JsonValue::Parsed(parsed);
-        Ok(())
+        let JsonValue::Parsed(inner) = self else {
+            unreachable!()
+        };
+        Ok(inner)
     }
 }
 
@@ -638,4 +641,56 @@ async fn main() -> anyhow::Result<()> {
         job??;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn example_parsable() -> anyhow::Result<()> {
+        use std::{
+            fs::OpenOptions,
+            io::{BufRead as _, BufReader},
+            path::Path,
+        };
+        let readme = BufReader::new(
+            OpenOptions::new()
+                .create(false)
+                .read(true)
+                .open(Path::new(env!("CARGO_MANIFEST_DIR")).join("../README.md"))?,
+        );
+        let mut yaml_config: Option<String> = None;
+        for line in readme.lines() {
+            let line = line?;
+            match (&mut yaml_config, line.as_str()) {
+                (None, "```yaml") => {
+                    yaml_config = Some(String::new());
+                }
+                (None, _) => (),
+                (Some(_), "```") => break,
+                (Some(lines), line) => {
+                    lines.push_str(line);
+                    lines.push('\n')
+                }
+            }
+        }
+        let Some(yaml_config) = yaml_config else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Could not read yaml config from README.md",
+            ))?;
+        };
+        let mut command: super::Command = serde_yaml::from_str(yaml_config.as_str())?;
+        assert_eq!("intouch2", &*command.mqtt_base_topic);
+        let mut has_entity_with_availability_object = false;
+        for entity in &mut command.entities {
+            if !entity.leaking_parse()?.availability.is_empty() {
+                has_entity_with_availability_object = true;
+            }
+        }
+        assert!(
+            has_entity_with_availability_object,
+            "No example value uses the availability object"
+        );
+        Ok(())
+    }
 }

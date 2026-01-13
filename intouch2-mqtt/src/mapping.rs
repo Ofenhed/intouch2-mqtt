@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     future::Future,
     mem,
     path::Path,
@@ -10,7 +10,6 @@ use std::{
 
 use intouch2::object::ReminderInfo;
 use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
-use serde::Deserialize;
 use tokio::{
     select,
     sync::{self, mpsc, watch, Mutex, OwnedMutexGuard},
@@ -23,48 +22,6 @@ use crate::{
     mqtt_session::{MqttError, Session as MqttSession, Topic},
     spa::{SpaCommand, SpaConnection, SpaError},
 };
-
-#[derive(Deserialize)]
-pub struct Entity<T> {
-    pub entity: T,
-    pub id: String,
-    pub name: String,
-}
-
-#[derive(Deserialize)]
-pub enum Light {
-    RGB {
-        red: usize,
-        green: usize,
-        blue: usize,
-    },
-    Dimmer(Box<Light>),
-}
-
-#[derive(Deserialize)]
-pub struct Pump {}
-
-#[derive(Deserialize)]
-pub struct Climate {}
-
-#[derive(Deserialize)]
-pub enum Entities {
-    Light(Entity<Light>),
-    Pump(Entity<Pump>),
-    Climate(Entity<Climate>),
-}
-
-#[derive(Deserialize)]
-pub struct Device {
-    pub id: String,
-    pub name: String,
-    pub entities: Entities,
-}
-
-#[derive(Deserialize)]
-pub struct Config {
-    pub entities: Vec<Device>,
-}
 
 #[derive(thiserror::Error, Debug)]
 pub enum MappingError {
@@ -366,6 +323,14 @@ pub enum MqttType {
     Value(serde_json::Value),
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct AvailabilityMapping<'a, T> {
+    pub payload_available: Option<Cow<'a, str>>,
+    pub payload_not_available: Option<Cow<'a, str>>,
+    pub topic: T,
+    pub value_template: Option<Cow<'a, str>>,
+}
+
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct GenericMapping {
     #[serde(rename = "type")]
@@ -373,7 +338,7 @@ pub struct GenericMapping {
     pub name: &'static str,
     pub unique_id: &'static str,
     #[serde(default)]
-    pub availability: Vec<home_assistant::AvailabilityMapping<'static>>,
+    pub availability: Vec<AvailabilityMapping<'static, MqttType>>,
     #[serde(default)]
     pub qos: u8,
     #[serde(flatten)]
@@ -511,13 +476,69 @@ impl Mapping {
                     name: Cow::Borrowed(mqtt_name),
                     unique_id: Cow::Borrowed(unique_id),
                     device: Cow::Borrowed(&device),
-                    availability,
                     qos,
                 },
                 args: Default::default(),
             };
-            for (key, value) in &mqtt_values {
-                match value {
+            enum ConfigSource<'a> {
+                Args((&'static str, MqttType)),
+                Availability(&'a AvailabilityMapping<'a, MqttType>),
+            }
+            impl ConfigSource<'_> {
+                fn value(&self) -> MqttType {
+                    match self {
+                        Self::Args((_, t))
+                        | Self::Availability(AvailabilityMapping { topic: t, .. }) => t.clone(),
+                    }
+                }
+                fn add(
+                    self,
+                    config: &mut home_assistant::ConfigureGeneric,
+                    topic: serde_json::Value,
+                ) {
+                    match self {
+                        Self::Args((key, _)) => {
+                            config.args.insert(key.as_ref(), topic);
+                        }
+                        Self::Availability(AvailabilityMapping {
+                            payload_available,
+                            payload_not_available,
+                            value_template,
+                            ..
+                        }) => {
+                            let new_object = serde_json::to_value(AvailabilityMapping {
+                                payload_available: payload_available.clone(),
+                                payload_not_available: payload_not_available.clone(),
+                                value_template: value_template.clone(),
+                                topic,
+                            })
+                            .expect(
+                                "Any value that has gotten this far will be convertable to json",
+                            );
+                            match config.args.entry("availability") {
+                                Entry::Occupied(mut occupied_entry) => {
+                                    let serde_json::Value::Array(array) = occupied_entry.get_mut()
+                                    else {
+                                        unreachable!(
+                                            "This will always have been created in this function"
+                                        )
+                                    };
+                                    array.push(new_object);
+                                }
+                                Entry::Vacant(vacant_entry) => {
+                                    vacant_entry.insert(serde_json::Value::Array(vec![new_object]));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            for item in mqtt_values
+                .into_iter()
+                .map(ConfigSource::Args)
+                .chain(availability.iter().map(ConfigSource::Availability))
+            {
+                match item.value() {
                     MqttType::State { state } => {
                         let topic = next_topic(Topic::State);
                         {
@@ -558,7 +579,7 @@ impl Mapping {
                                 }
                             });
                         }
-                        config.args.insert(key.as_ref(), topic.into())
+                        item.add(&mut config, topic.into());
                     }
                     MqttType::Command { command } => {
                         let topic = next_topic(Topic::Set);
@@ -680,9 +701,9 @@ impl Mapping {
                                 }
                             });
                         }
-                        config.args.insert(key.as_ref(), topic.into())
+                        item.add(&mut config, topic.into());
                     }
-                    MqttType::Value(value) => config.args.insert(key.as_ref(), value.clone()),
+                    MqttType::Value(value) => item.add(&mut config, value),
                 };
             }
             serde_json::to_vec(&config)?
