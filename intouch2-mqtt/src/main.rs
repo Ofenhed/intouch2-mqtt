@@ -216,13 +216,13 @@ struct MqttAuthOptions {
 impl MqttAuthOptions {
     pub fn fill_defaults(&mut self) {
         if let target @ None = &mut self.target {
-            *target = std::env::var("MQTT_SERVER").map(|x| x.into()).ok();
+            *target = env::var("MQTT_SERVER").map(|x| x.into()).ok();
         }
         if let username @ None = &mut self.username {
-            *username = std::env::var("MQTT_USER").map(|x| x.into()).ok();
+            *username = env::var("MQTT_USER").map(|x| x.into()).ok();
         }
         if let password @ None = &mut self.password {
-            *password = std::env::var("MQTT_PASSWORD").map(|x| x.into()).ok();
+            *password = env::var("MQTT_PASSWORD").map(|x| x.into()).ok();
         }
     }
 }
@@ -232,8 +232,8 @@ impl Command {
         static ARGS: OnceLock<Command> = OnceLock::new();
         ARGS.get_or_init(|| {
             let config_file =
-                std::env::var("CONFIG_FILE").unwrap_or_else(|_| "/data/options.json".into());
-            if std::env::args_os().len() <= 1 {
+                env::var("CONFIG_FILE").unwrap_or_else(|_| "/data/options.json".into());
+            if env::args_os().len() <= 1 {
                 let span_read_config = trace_span!("read config", config_file);
                 let _ = span_read_config.enter();
                 if let Ok(config_file) = std::fs::read(config_file) {
