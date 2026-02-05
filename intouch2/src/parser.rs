@@ -79,11 +79,11 @@ impl<'a> DatasContent<'a> for u16 {
 
 impl<'a> DatasContent<'a> for i16 {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        nom::number::complete::be_i16(input)
+        nom::number::complete::le_i16(input)
     }
 
     fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Owned(self.to_be_bytes().into())
+        Cow::Owned(self.to_le_bytes().into())
     }
 }
 
