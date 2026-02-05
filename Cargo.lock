@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "intouch2"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "disjoint_impls",
  "nom",
@@ -268,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "intouch2-mqtt"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",

@@ -358,9 +358,6 @@ macro_rules! gen_packages {
   };
   ($(#[$meta:meta])* pub struct $parse:ident { $($rest:tt)* }) => {
     $(#[$meta])* pub struct $parse { $($rest)* }
-    mod fuck_you {
-        use super::*;
-        $crate::gen_packages!{ BUILD_STRUCT_IMPLS $parse b"" [] [] [] {[] [] $($rest)*} => $($rest)*}
-    }
+    $crate::gen_packages!{ BUILD_STRUCT_IMPLS $parse b"" [] [] [] {[] [] $($rest)*} => $($rest)*}
   };
 }

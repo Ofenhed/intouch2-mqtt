@@ -26,14 +26,6 @@ impl ToStatic for StatusChange<'_> {
     }
 }
 
-impl ToStatic for ReminderInfo {
-    type Static = ReminderInfo;
-
-    fn to_static(&self) -> Self::Static {
-        self.clone()
-    }
-}
-
 #[derive(
     Clone,
     Copy,
@@ -59,12 +51,14 @@ pub enum ReminderIndex {
 
 pub type ReminderData = i16;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-pub struct ReminderInfo {
-    pub index: ReminderIndex,
-    pub data: ReminderData,
-    pub valid: bool,
+crate::gen_packages! {
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+    pub struct ReminderInfo {
+        pub index: ReminderIndex,
+        pub data: ReminderData,
+        pub valid: bool,
+    }
 }
 
 crate::gen_packages! {
@@ -133,6 +127,10 @@ impl ActualType for WatercareInfo {
 }
 
 macro_rules! simple_type {
+    ($ty:ty: Transmute $(,$($rest:tt)*)?) => {
+        impl TransmutedArray for $ty {}
+        simple_type!{ $ty $(,$($rest)*)? }
+    };
     ($ty:ty $(,$($rest:tt)*)?) => {
         impl ActualType for $ty {
             type Type = $ty;
@@ -143,20 +141,19 @@ macro_rules! simple_type {
                 *self
             }
         }
-        impl TransmutedArray for $ty {}
         simple_type!{ $($($rest)*)? }
     };
     () => {};
 }
 simple_type!(
-    u8,
+    u8: Transmute,
     u16,
     i16,
-    bool,
-    WatercareType,
-    Weekday,
-    Time,
-    ReminderIndex
+    bool: Transmute,
+    WatercareType: Transmute,
+    Weekday: Transmute,
+    Time: Transmute,
+    ReminderIndex: Transmute
 );
 
 pub mod package_data {

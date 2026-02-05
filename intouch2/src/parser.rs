@@ -67,6 +67,26 @@ fn parse_addressed_package<'a>(input: &'a [u8]) -> IResult<&'a [u8], NetworkPack
     ))
 }
 
+impl<'a> DatasContent<'a> for u16 {
+    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
+        nom::number::complete::be_u16(input)
+    }
+
+    fn compose(&self) -> Cow<'a, [u8]> {
+        Cow::Owned(self.to_be_bytes().into())
+    }
+}
+
+impl<'a> DatasContent<'a> for i16 {
+    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
+        nom::number::complete::be_i16(input)
+    }
+
+    fn compose(&self) -> Cow<'a, [u8]> {
+        Cow::Owned(self.to_be_bytes().into())
+    }
+}
+
 impl<'a, T1: DatasContent<'a>, T2: DatasContent<'a>> DatasContent<'a> for (T1, T2) {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         let (input, t1) = T1::parse(input)?;
@@ -145,53 +165,6 @@ impl<'a> DatasContent<'a> for StatusChange<'a> {
 
     fn compose(&self) -> Cow<'a, [u8]> {
         Cow::Owned([self.change.to_be_bytes().as_ref(), self.data.as_ref()][..].concat())
-    }
-}
-
-impl<'a> DatasContent<'a> for ReminderInfo {
-    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        let (new_input, index) = u8::parse(input)?;
-        let (input, index) = (
-            new_input,
-            ReminderIndex::from_repr(index).ok_or_else(|| {
-                nom::Err::Failure(nom::error::make_error(
-                    new_input,
-                    nom::error::ErrorKind::OneOf,
-                ))
-            })?,
-        );
-
-        let Some((data, input)) = input.split_first_chunk::<2>() else {
-            return Err(nom::Err::Failure(nom::error::make_error(
-                input,
-                nom::error::ErrorKind::Eof,
-            )));
-        };
-        let data = i16::from_le_bytes(*data);
-        let before_valid = input;
-        let (input, valid) = <u8 as DatasContent>::parse(input)?;
-        let valid = match valid {
-            0 => false,
-            1 => true,
-            _ => {
-                return Err(nom::Err::Failure(nom::error::make_error(
-                    before_valid,
-                    nom::error::ErrorKind::OneOf,
-                )))?
-            }
-        };
-        Ok((input, Self { index, data, valid }))
-    }
-
-    fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Owned(
-            [
-                &[self.index as u8],
-                self.data.to_le_bytes().as_ref(),
-                if self.valid { b"\x01" } else { b"\x00" },
-            ][..]
-                .concat(),
-        )
     }
 }
 
