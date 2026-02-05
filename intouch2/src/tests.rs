@@ -104,7 +104,10 @@ fn parse_reminders() {
     let mut raw_data = b"RMREQ".to_vec();
     raw_data.append(&mut valid_payload.to_vec());
     let parse_fail = match NetworkPackageData::parse(&raw_data) {
-        Ok(([], NetworkPackageData::Reminders(_))) => None,
+        Ok(([], NetworkPackageData::Reminders(reminders))) => {
+            assert_eq!(&raw_data[..], &reminders.compose()[..]);
+            None
+        }
         x => Some(x),
     };
     assert_eq!(parse_fail, None);
@@ -119,7 +122,10 @@ fn parse_watercare() {
     let mut raw_data = b"WCREQ".to_vec();
     raw_data.append(&mut valid_payload.to_vec());
     let parse_fail = match NetworkPackageData::parse(&raw_data) {
-        Ok(([], NetworkPackageData::WatercareRequest(_))) => None,
+        Ok(([], NetworkPackageData::WatercareRequest(req))) => {
+            assert_eq!(&raw_data[..], &req.compose()[..]);
+            None
+        }
         x => Some(x),
     };
     assert_eq!(parse_fail, None);

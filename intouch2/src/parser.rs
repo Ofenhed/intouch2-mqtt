@@ -67,26 +67,6 @@ fn parse_addressed_package<'a>(input: &'a [u8]) -> IResult<&'a [u8], NetworkPack
     ))
 }
 
-impl<'a> DatasContent<'a> for u8 {
-    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        nom::number::complete::u8(input)
-    }
-
-    fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Owned(self.to_be_bytes().into())
-    }
-}
-
-impl<'a> DatasContent<'a> for u16 {
-    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        nom::number::complete::be_u16(input)
-    }
-
-    fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Owned(self.to_be_bytes().into())
-    }
-}
-
 impl<'a, T1: DatasContent<'a>, T2: DatasContent<'a>> DatasContent<'a> for (T1, T2) {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         let (input, t1) = T1::parse(input)?;
@@ -109,27 +89,18 @@ impl<'a> DatasContent<'a> for &'a [u8] {
     }
 }
 
-impl<'a, const LENGTH: usize> DatasContent<'a> for Cow<'a, [u8; LENGTH]> {
+impl<const LENGTH: usize> TransmutedArray for [u8; LENGTH] {
+    const SIZE: usize = LENGTH;
+}
+
+impl<'a, T: DatasContent<'a> + Clone> DatasContent<'a> for Cow<'a, T> {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        let (sized, rest) = input.split_at(LENGTH);
-        if let Ok(sized) = sized.try_into() {
-            Ok((rest, Cow::Borrowed(sized)))
-        } else {
-            debug_assert!(
-                LENGTH > sized.len(),
-                "Could not create sized array, even though data was available"
-            );
-            Err(nom::Err::Incomplete(nom::Needed::Size(unsafe {
-                std::num::NonZeroUsize::new_unchecked(LENGTH - sized.len())
-            })))
-        }
+        let (input, parsed) = T::parse(input)?;
+        Ok((input, Cow::Owned(parsed)))
     }
 
     fn compose(&self) -> Cow<'a, [u8]> {
-        match self {
-            Cow::Borrowed(from) => Cow::Borrowed(&from[..]),
-            Cow::Owned(x) => Cow::Owned(x[..].to_owned()),
-        }
+        T::compose(self)
     }
 }
 
@@ -177,23 +148,6 @@ impl<'a> DatasContent<'a> for StatusChange<'a> {
     }
 }
 
-impl<'a> DatasContent<'a> for WatercareType {
-    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        let (new_input, parsed) = <u8 as DatasContent>::parse(input)?;
-        let watercare_type = WatercareType::from_repr(parsed).ok_or_else(|| {
-            nom::Err::Failure(nom::error::make_error(
-                new_input,
-                nom::error::ErrorKind::OneOf,
-            ))
-        })?;
-        Ok((new_input, watercare_type))
-    }
-
-    fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Owned([*self as u8][..].into())
-    }
-}
-
 impl<'a> DatasContent<'a> for ReminderInfo {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         let (new_input, index) = u8::parse(input)?;
@@ -238,88 +192,6 @@ impl<'a> DatasContent<'a> for ReminderInfo {
             ][..]
                 .concat(),
         )
-    }
-}
-
-impl<'a> DatasContent<'a> for WatercareInfo {
-    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        let (input, mode) = u8::parse(input)?;
-        let (new_input, r#type) = u8::parse(input)?;
-        let (input, r#type) = (
-            new_input,
-            WatercareType::from_repr(r#type).ok_or_else(|| {
-                nom::Err::Failure(nom::error::make_error(
-                    new_input,
-                    nom::error::ErrorKind::OneOf,
-                ))
-            })?,
-        );
-
-        let (input, index) = u8::parse(input)?;
-        let (new_input, start_day) = u8::parse(input)?;
-        let (input, start_day) = (
-            new_input,
-            Weekday::from_repr(start_day).ok_or_else(|| {
-                nom::Err::Failure(nom::error::make_error(
-                    new_input,
-                    nom::error::ErrorKind::OneOf,
-                ))
-            })?,
-        );
-        let (new_input, end_day) = u8::parse(input)?;
-        let (input, end_day) = (
-            new_input,
-            Weekday::from_repr(end_day).ok_or_else(|| {
-                nom::Err::Failure(nom::error::make_error(
-                    new_input,
-                    nom::error::ErrorKind::OneOf,
-                ))
-            })?,
-        );
-
-        let (input, start_time) = Time::parse(input)?;
-        let (input, end_time) = Time::parse(input)?;
-        Ok((
-            input,
-            Self {
-                mode,
-                r#type,
-                index,
-                start_day,
-                end_day,
-                start_time,
-                end_time,
-            },
-        ))
-    }
-
-    fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Owned(
-            [
-                &[
-                    self.mode as u8,
-                    self.r#type as u8,
-                    self.index,
-                    self.start_day as u8,
-                    self.end_day as u8,
-                ][..],
-                &self.start_time.compose(),
-                &self.end_time.compose(),
-            ][..]
-                .concat(),
-        )
-    }
-}
-
-impl<'a> DatasContent<'a> for Time {
-    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-        let (input, hour) = u8::parse(input)?;
-        let (input, minute) = u8::parse(input)?;
-        Ok((input, Self { hour, minute }))
-    }
-
-    fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Owned(vec![self.hour, self.minute])
     }
 }
 

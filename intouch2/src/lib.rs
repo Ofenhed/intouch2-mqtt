@@ -1,3 +1,5 @@
+#![allow(incomplete_features)]
+#![feature(generic_const_exprs)]
 #![recursion_limit = "512"]
 use std::borrow::Cow;
 

@@ -26,14 +26,6 @@ impl ToStatic for StatusChange<'_> {
     }
 }
 
-impl ToStatic for WatercareInfo {
-    type Static = WatercareInfo;
-
-    fn to_static(&self) -> Self::Static {
-        self.clone()
-    }
-}
-
 impl ToStatic for ReminderInfo {
     type Static = ReminderInfo;
 
@@ -75,16 +67,18 @@ pub struct ReminderInfo {
     pub valid: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-pub struct WatercareInfo {
-    pub mode: u8,
-    pub r#type: WatercareType,
-    pub index: u8,
-    pub start_day: Weekday,
-    pub end_day: Weekday,
-    pub start_time: Time,
-    pub end_time: Time,
+crate::gen_packages! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+  #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+  pub struct WatercareInfo {
+      pub mode: u8,
+      pub r#type: WatercareType,
+      pub index: u8,
+      pub start_day: Weekday,
+      pub end_day: Weekday,
+      pub start_time: Time,
+      pub end_time: Time,
+  }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, strum::FromRepr)]
@@ -138,7 +132,7 @@ impl ActualType for WatercareInfo {
     type Type = WatercareInfo;
 }
 
-macro_rules! actually_self {
+macro_rules! simple_type {
     ($ty:ty $(,$($rest:tt)*)?) => {
         impl ActualType for $ty {
             type Type = $ty;
@@ -149,11 +143,21 @@ macro_rules! actually_self {
                 *self
             }
         }
-        actually_self!{ $($($rest)*)? }
+        impl TransmutedArray for $ty {}
+        simple_type!{ $($($rest)*)? }
     };
     () => {};
 }
-actually_self!(u8, u16, WatercareType, Weekday);
+simple_type!(
+    u8,
+    u16,
+    i16,
+    bool,
+    WatercareType,
+    Weekday,
+    Time,
+    ReminderIndex
+);
 
 pub mod package_data {
     use super::*;
