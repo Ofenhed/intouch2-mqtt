@@ -26,14 +26,11 @@ impl ToStatic for StatusChange<'_> {
     }
 }
 
-impl<const N: usize> ToStatic for Cow<'_, [u8; N]> {
-    type Static = Cow<'static, [u8; N]>;
+impl ToStatic for WatercareInfo {
+    type Static = WatercareInfo;
 
     fn to_static(&self) -> Self::Static {
-        match *self {
-            Cow::Owned(x) => Cow::Owned(x),
-            Cow::Borrowed(x) => Cow::Owned(*x),
-        }
+        self.clone()
     }
 }
 
@@ -78,10 +75,43 @@ pub struct ReminderInfo {
     pub valid: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct WatercareInfo {
+    pub mode: u8,
+    pub r#type: WatercareType,
+    pub index: u8,
+    pub start_day: Weekday,
+    pub end_day: Weekday,
+    pub start_time: Time,
+    pub end_time: Time,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, strum::FromRepr)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[repr(u8)]
+pub enum Weekday {
+    Sunday = 0,
+    Monday = 1,
+    Tuesday = 2,
+    Wednesday = 3,
+    Thursday = 4,
+    Friday = 5,
+    Saturday = 6,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct Time {
+    pub hour: u8,
+    pub minute: u8,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, strum::FromRepr)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 #[repr(u8)]
 pub enum WatercareType {
+    Invalid = 0,
     Economy = 1,
     FilterCycle = 2,
 }
@@ -100,6 +130,14 @@ impl<'a> ActualType for &'a [ReminderInfo] {
     type Type = Cow<'a, [ReminderInfo]>;
 }
 
+impl<'a> ActualType for &'a [WatercareInfo] {
+    type Type = Cow<'a, [WatercareInfo]>;
+}
+
+impl ActualType for WatercareInfo {
+    type Type = WatercareInfo;
+}
+
 macro_rules! actually_self {
     ($ty:ty $(,$($rest:tt)*)?) => {
         impl ActualType for $ty {
@@ -115,7 +153,7 @@ macro_rules! actually_self {
     };
     () => {};
 }
-actually_self!(u8, u16, WatercareType);
+actually_self!(u8, u16, WatercareType, Weekday);
 
 pub mod package_data {
     use super::*;
@@ -205,14 +243,7 @@ pub mod package_data {
         ModifyWatercare {
             b"MDFWC": Tag,
             seq: u8,
-            mode: u8,
-            r#type: WatercareType,
-            rule_index: u8,
-            unknown: &[u8; 2],
-            start_hour: u8,
-            start_minute: u8,
-            end_hour: u8,
-            end_minutes: u8,
+            info: WatercareInfo,
         },
         DeleteWatercare {
             b"DELWC": Tag,
@@ -230,14 +261,7 @@ pub mod package_data {
         AddWatercare {
             b"ADDWC": Tag,
             seq: u8,
-            mode: u8,
-            r#type: WatercareType,
-            index: u8,
-            unknown: &[u8; 2],
-            start_hour: u8,
-            start_minute: u8,
-            end_hour: u8,
-            end_minutes: u8,
+            info: WatercareInfo,
         },
         WatercareAdded {
             b"WCADD": Tag,
@@ -269,7 +293,13 @@ pub mod package_data {
         RemindersSet {
             b"RMSET": Tag,
         },
-        WatercareRequest(b"WCREQ": Tailing),
+        WatercareRequest{
+            b"WCREQ": Tag,
+            index: u8,
+            next_index: u8,
+            schedule: &[WatercareInfo],
+        },
+        MalformedWatercareRequest(b"WCREQ": Tailing),
         ChannelCurrent {
             b"CHCUR": Tag,
             channel: u8,

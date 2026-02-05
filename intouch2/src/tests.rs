@@ -111,6 +111,21 @@ fn parse_reminders() {
 }
 
 #[test]
+fn parse_watercare() {
+    let valid_payload = [
+        0, 1, 0, 1, 0, 0, 6, 0, 0, 0, 0, 0, 2, 1, 0, 6, 6, 30, 6, 40, 0, 2, 2, 0, 6, 22, 0, 22, 10,
+        1, 2, 0, 0, 6, 18, 0, 18, 10,
+    ];
+    let mut raw_data = b"WCREQ".to_vec();
+    raw_data.append(&mut valid_payload.to_vec());
+    let parse_fail = match NetworkPackageData::parse(&raw_data) {
+        Ok(([], NetworkPackageData::WatercareRequest(_))) => None,
+        x => Some(x),
+    };
+    assert_eq!(parse_fail, None);
+}
+
+#[test]
 fn id_packets() {
     let packets = vec![
         NetworkPackage::Hello(b"My hello".as_slice().into()),

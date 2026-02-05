@@ -6,19 +6,11 @@ pub trait ToStatic {
     fn to_static(&self) -> Self::Static;
 }
 
-impl<O, S, T> ToStatic for Cow<'_, [T]>
-where
-    S: Clone + 'static,
-    O: ToStatic<Static = S>,
-    [T]: ToOwned<Owned = Vec<O>>,
-{
-    type Static = Cow<'static, [S]>;
+impl<'a, T: ToOwned + ToStatic + ?Sized> ToStatic for Cow<'a, T> {
+    type Static = T::Static;
 
     fn to_static(&self) -> Self::Static {
-        match self {
-            Cow::Owned(o) => o.to_static(),
-            Cow::Borrowed(b) => (**b).to_owned().to_static(),
-        }
+        T::to_static(self.as_ref())
     }
 }
 

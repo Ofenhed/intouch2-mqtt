@@ -241,6 +241,88 @@ impl<'a> DatasContent<'a> for ReminderInfo {
     }
 }
 
+impl<'a> DatasContent<'a> for WatercareInfo {
+    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
+        let (input, mode) = u8::parse(input)?;
+        let (new_input, r#type) = u8::parse(input)?;
+        let (input, r#type) = (
+            new_input,
+            WatercareType::from_repr(r#type).ok_or_else(|| {
+                nom::Err::Failure(nom::error::make_error(
+                    new_input,
+                    nom::error::ErrorKind::OneOf,
+                ))
+            })?,
+        );
+
+        let (input, index) = u8::parse(input)?;
+        let (new_input, start_day) = u8::parse(input)?;
+        let (input, start_day) = (
+            new_input,
+            Weekday::from_repr(start_day).ok_or_else(|| {
+                nom::Err::Failure(nom::error::make_error(
+                    new_input,
+                    nom::error::ErrorKind::OneOf,
+                ))
+            })?,
+        );
+        let (new_input, end_day) = u8::parse(input)?;
+        let (input, end_day) = (
+            new_input,
+            Weekday::from_repr(end_day).ok_or_else(|| {
+                nom::Err::Failure(nom::error::make_error(
+                    new_input,
+                    nom::error::ErrorKind::OneOf,
+                ))
+            })?,
+        );
+
+        let (input, start_time) = Time::parse(input)?;
+        let (input, end_time) = Time::parse(input)?;
+        Ok((
+            input,
+            Self {
+                mode,
+                r#type,
+                index,
+                start_day,
+                end_day,
+                start_time,
+                end_time,
+            },
+        ))
+    }
+
+    fn compose(&self) -> Cow<'a, [u8]> {
+        Cow::Owned(
+            [
+                &[
+                    self.mode as u8,
+                    self.r#type as u8,
+                    self.index,
+                    self.start_day as u8,
+                    self.end_day as u8,
+                ][..],
+                &self.start_time.compose(),
+                &self.end_time.compose(),
+            ][..]
+                .concat(),
+        )
+    }
+}
+
+impl<'a> DatasContent<'a> for Time {
+    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
+        let (input, hour) = u8::parse(input)?;
+        let (input, minute) = u8::parse(input)?;
+        Ok((input, Self { hour, minute }))
+    }
+
+    fn compose(&self) -> Cow<'a, [u8]> {
+        Cow::Owned(vec![self.hour, self.minute])
+    }
+}
+
 impl<'a, T: DatasContent<'a> + Clone> DatasContent<'a> for Cow<'a, [T]>
 where
     [T]: ToOwned,
