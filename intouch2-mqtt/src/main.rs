@@ -578,7 +578,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut mqtt_subscription = mqtt.subscribe();
                 mqtt.mqtt_subscribe(&vec![SubscribeTopic {
                     topic_path: args.mqtt_home_assistant_status_topic.to_string(),
-                    qos: mqttrs::QoS::AtMostOnce,
+                    qos: mqttrs::QoS::AtLeastOnce,
                 }])
                 .await?;
                 'send_config: loop {
