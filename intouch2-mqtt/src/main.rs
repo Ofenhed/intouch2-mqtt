@@ -512,6 +512,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut mqtt_sender = mqtt.sender();
                 let len = spa.len().await;
                 let mut spa_data = spa.subscribe(0..len).await;
+                debug!(parent: &span_initial_memory, "Initial memory: {:?}", spa_data.borrow());
                 let memory_change_topic =
                     PathBuf::from(args.mqtt_base_topic.as_ref()).join(memory_change_topic.as_ref());
                 join_set.spawn(async move {
