@@ -232,6 +232,23 @@ entities_json:
      "value_template": "{{ 'offline' if value != 'online' else 'online' }}"
     }
   - |-
+    {"name": "Spa Economy Temperature Target",
+     "unique_id": "spa_economy_temperature_target",
+     "type": "number",
+     "device_class": "temperature",
+     "mode": "box",
+     "optimistic": true,
+     "retain": true,
+     "step": 0.5,
+     "unit_of_measurement": "°C",
+     "min": 15,
+     "max": 40,
+     "icon": "mdi:thermometer-water",
+     "command_topic": "intouch2-loopback/spa_economy_temperature_target",
+     "state_topic": "intouch2-loopback/spa_economy_temperature_target",
+     "value_template": "{{ value|int(default=25) }}"
+    }
+  - |-
     {"name": "Change Water",
      "unique_id": "spa_reminder_change_water",
      "type": "sensor",
