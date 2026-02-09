@@ -594,7 +594,18 @@ impl Mapping {
                                     let lock: Option<OwnedMutexGuard<()>> =
                                         mem::take(&mut first_state_sent);
                                     drop(lock);
-                                    data_subscription.changed().await?;
+                                    loop {
+                                        select! {
+                                            _ = data_subscription.changed() => {
+                                                break
+                                            }
+                                            _ = initialized.changed() => {
+                                                if *initialized.borrow_and_update() {
+                                                    break
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             });
                         }
