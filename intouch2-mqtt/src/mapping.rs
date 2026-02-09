@@ -48,7 +48,7 @@ pub enum MappingError {
 pub struct Mapping {
     device: home_assistant::ConfigureDevice,
     jobs: JoinSet<Result<(), MappingError>>,
-    uninitialized: Vec<Arc<Mutex<()>>>,
+    uninitialized: Arc<Mutex<Vec<Arc<Mutex<()>>>>>,
     active: sync::watch::Sender<bool>,
     topic_cache: HashMap<MqttType, serde_json::Value>,
 }
@@ -415,28 +415,32 @@ impl GenericMapping {
 
 impl Mapping {
     pub async fn reset(&mut self) {
-        self.jobs.shutdown().await;
-        self.jobs = JoinSet::new();
-        self.uninitialized = vec![];
         self.active.send_replace(false);
     }
 
     pub async fn start(&mut self, mqtt: &mut MqttSession) -> Result<(), MappingError> {
         self.active.send_replace(true);
-        while let Some(lock) = self.uninitialized.last().map(<Arc<_> as Clone>::clone) {
-            let mut acquire_lock = pin!(lock.lock_owned());
+        async fn last_arc<T>(x: &Arc<Mutex<Vec<Arc<T>>>>) -> Option<Arc<T>> {
+            let lock = x.lock().await;
+            lock.last().map(Arc::clone)
+        }
+        while let Some(next_uninitialized) = last_arc(&self.uninitialized).await {
             loop {
+                let mut wait_for_lock = pin!(next_uninitialized.lock());
                 select! {
-                    _ = &mut acquire_lock => {
-                        self.uninitialized.pop();
-                        break
-                    }
                     tick_result = self.tick() => {
                         let _: () = tick_result?;
                         continue
                     }
                     mqtt_result = mqtt.tick() => {
                         let _: () = mqtt_result?;
+                    }
+                    _ = &mut wait_for_lock => {
+                        let mut uninit = self.uninitialized.lock().await;
+                        if uninit.last().map(Arc::as_ptr) == Some(Arc::as_ptr(&next_uninitialized)) {
+                            uninit.pop();
+                        }
+                        break
                     }
                 }
             }
@@ -565,11 +569,17 @@ impl Mapping {
                             let mut data_subscription =
                                 state.subscribe(spa, &mut self.jobs).await?;
                             let mut initialized = self.active.subscribe();
-                            let mutex = Arc::new(Mutex::new(())).try_lock_owned().expect(
-                                "This mutex was just created, the lock should be guaranteed",
-                            );
+                            let create_locked_mutex = || {
+                                Arc::new(Mutex::new(())).try_lock_owned().expect(
+                                    "This mutex was just created, the lock should be guaranteed",
+                                )
+                            };
+                            let mutex = create_locked_mutex();
                             self.uninitialized
+                                .lock()
+                                .await
                                 .push(OwnedMutexGuard::mutex(&mutex).clone());
+                            let all_uninitialized = self.uninitialized.clone();
                             let mut first_state_sent = Some(mutex);
                             let next_qos = next_qos.clone();
                             self.jobs.spawn(async move {
@@ -585,21 +595,28 @@ impl Mapping {
                                         );
                                     }
                                 }
+                                let mut lock = mem::take(&mut first_state_sent);
                                 loop {
                                     let reported_value = data_subscription.borrow_and_update();
                                     let payload = serde_json::to_vec(&reported_value)?;
                                     sender
                                         .publish(Path::new(&topic), next_qos(), payload)
                                         .await?;
-                                    let lock: Option<OwnedMutexGuard<()>> =
-                                        mem::take(&mut first_state_sent);
-                                    drop(lock);
+                                    drop(mem::take(&mut lock));
                                     loop {
                                         select! {
                                             _ = data_subscription.changed() => {
                                                 break
                                             }
                                             _ = initialized.changed() => {
+                                                if lock.is_none() {
+                                                    let mutex = create_locked_mutex();
+                                                    all_uninitialized
+                                                        .lock()
+                                                        .await
+                                                        .push(OwnedMutexGuard::mutex(&mutex).clone());
+                                                    lock = Some(mutex);
+                                                }
                                                 if *initialized.borrow_and_update() {
                                                     break
                                                 }
@@ -776,7 +793,7 @@ impl Mapping {
         Ok(Self {
             jobs,
             device,
-            uninitialized: vec![],
+            uninitialized: Arc::new(vec![].into()),
             active: sync::watch::Sender::new(false),
             topic_cache: Default::default(),
         })
