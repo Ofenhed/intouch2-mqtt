@@ -11,7 +11,7 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-rand = "0.8"
+rand = "0.9"
 serde = "1.0"
 strum = { version = "0.25", features = ["derive"] }
 thiserror = "2.0"
