@@ -232,6 +232,22 @@ entities_json:
      "value_template": "{{ 'offline' if value != 'online' else 'online' }}"
     }
   - |-
+    {"name": "Reasonable Electricity Price",
+     "unique_id": "spa_reasonable_electricity_price",
+     "type": "number",
+     "mode": "box",
+     "optimistic": true,
+     "retain": true,
+     "step": 1,
+     "unit_of_measurement": "Öre/kWh",
+     "min": -20,
+     "max": 250,
+     "icon": "mdi:cash-multiple",
+     "command_topic": "intouch2-loopback/spa_reasonable_electricity_price",
+     "state_topic": "intouch2-loopback/spa_reasonable_electricity_price",
+     "value_template": "{{ value|int(default=100) }}"
+    }
+  - |-
     {"name": "Spa Economy Temperature Target",
      "unique_id": "spa_economy_temperature_target",
      "type": "number",
@@ -298,6 +314,15 @@ entities_json:
         "value_template": "{{ 'offline' if value_json is none else 'online' }}"
        }
      ]
+    }
+  - |-
+    {"name": "Fountain timeout",
+     "unique_id": "spa_timeout_fountain",
+     "type": "sensor",
+     "device_class": "duration",
+     "unit_of_measurement": "min",
+     "state_topic": {"state": {"u8_addr": 362}},
+     "availability_topic": "intouch2/availability"
     }
 mqtt_availability_topic: availability
 mqtt_base_topic: intouch2
