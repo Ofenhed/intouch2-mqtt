@@ -8,7 +8,7 @@ arch:
   - amd64
   - armv7
 stage: experimental
-image: ghcr.io/ofenhed/hassio-addon-{arch}-intouch2-mqtt
+image: ghcr.io/ofenhed/{arch}-intouch2-mqtt
 ports:
   10022/udp: 10022
 ports_description:
