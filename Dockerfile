@@ -14,10 +14,10 @@ COPY intouch2-mqtt/Cargo.toml ./intouch2-mqtt/Cargo.toml
 RUN cargo build --release
 
 COPY intouch2/ ./intouch2/
-RUN touch ./intouch2/src/* && cargo build --release -p intouch2
+RUN touch ./intouch2/src/* && cargo build -p intouch2
 
 COPY intouch2-mqtt/ ./intouch2-mqtt/
-RUN touch ./intouch2-mqtt/src/* && cargo build --release --bin intouch2-mqtt
+RUN touch ./intouch2-mqtt/src/* && cargo build --bin intouch2-mqtt
 
 FROM ${BUILD_FROM}
 ARG BUILD_VERSION
