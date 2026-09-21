@@ -11,7 +11,7 @@ RUN cargo new --bin intouch2-mqtt
 RUN cargo new --lib intouch2
 COPY intouch2/Cargo.toml ./intouch2/Cargo.toml
 COPY intouch2-mqtt/Cargo.toml ./intouch2-mqtt/Cargo.toml
-RUN cargo build --release
+RUN cargo build
 
 COPY intouch2/ ./intouch2/
 RUN touch ./intouch2/src/* && cargo build -p intouch2
@@ -22,7 +22,7 @@ RUN touch ./intouch2-mqtt/src/* && cargo build --bin intouch2-mqtt
 FROM ${BUILD_FROM}
 ARG BUILD_VERSION
 ARG BUILD_ARCH
-COPY --from=build --chmod=555 /build/target/release/intouch2-mqtt /usr/local/bin/intouch2-mqtt
+COPY --from=build --chmod=555 /build/target/debug/intouch2-mqtt /usr/local/bin/intouch2-mqtt
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 EXPOSE 10022/udp
 ENV RUST_BACKTRACE=1
