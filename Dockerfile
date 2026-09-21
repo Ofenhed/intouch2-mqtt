@@ -25,6 +25,7 @@ ARG BUILD_ARCH
 COPY --from=build --chmod=555 /build/target/release/intouch2-mqtt /usr/local/bin/intouch2-mqtt
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 EXPOSE 10022/udp
+ENV RUST_BACKTRACE=1
 LABEL \
   io.hass.version="${VERSION}" \
   io.hass.type="addon" \
