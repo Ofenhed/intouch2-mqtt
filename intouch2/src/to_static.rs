@@ -1,30 +1,47 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, ops::Deref};
 
 pub trait ToStatic {
     type Static: 'static;
 
-    fn to_static(&self) -> Self::Static;
+    fn to_static(self) -> Self::Static;
 }
 
-impl<'a, T: ToOwned + ToStatic + ?Sized> ToStatic for Cow<'a, T> {
-    type Static = T::Static;
+pub trait ClonedStatic
+where
+    Self: Deref,
+    <Self as Deref>::Target: ToStatic,
+{
+    fn cloned_static(self) -> <<Self as Deref>::Target as ToStatic>::Static;
+}
 
-    fn to_static(&self) -> Self::Static {
-        T::to_static(self.as_ref())
+impl<T: Clone + ToStatic> ClonedStatic for &T {
+    fn cloned_static(self) -> <T as ToStatic>::Static {
+        self.clone().to_static()
     }
 }
 
-impl<const N: usize, S, T> ToStatic for [T; N]
+impl<'a, T: ToOwned + ?Sized> ToStatic for Cow<'a, T>
+where
+    <T as ToOwned>::Owned: ToStatic,
+{
+    type Static = <<T as ToOwned>::Owned as ToStatic>::Static;
+
+    fn to_static(self) -> Self::Static {
+        self.into_owned().to_static()
+    }
+}
+
+impl<const N: usize, S, T: Clone> ToStatic for &[T; N]
 where
     S: Clone + 'static,
     T: ToStatic<Static = S>,
 {
     type Static = Cow<'static, [S; N]>;
 
-    fn to_static(&self) -> Self::Static {
+    fn to_static(self) -> Self::Static {
         let mut new_list = Vec::with_capacity(self.len());
         for item in self {
-            new_list.push(item.to_static());
+            new_list.push(item.cloned_static());
         }
         let Ok(b): Result<Box<[S; N]>, _> = new_list.try_into() else {
             unreachable!("The size is compile time checked as well")
@@ -33,27 +50,46 @@ where
     }
 }
 
-impl<S, T> ToStatic for Vec<T>
+impl<const N: usize, S, T: Clone> ToStatic for [T; N]
 where
     S: Clone + 'static,
     T: ToStatic<Static = S>,
 {
-    type Static = Cow<'static, [S]>;
+    type Static = Cow<'static, [S; N]>;
 
-    fn to_static(&self) -> Self::Static {
-        AsRef::<[T]>::as_ref(self).to_static()
+    fn to_static(self) -> Self::Static {
+        let mut new_list = Vec::with_capacity(self.len());
+        for item in self {
+            new_list.push(item.clone().to_static());
+        }
+        let Ok(b): Result<Box<[S; N]>, _> = new_list.try_into() else {
+            unreachable!("The size is compile time checked as well")
+        };
+        Cow::Owned(*b)
     }
 }
 
-impl<S, T> ToStatic for [T]
+impl<T> ToStatic for Vec<T>
 where
-    S: Clone + 'static,
-    T: ToStatic<Static = S>,
+    T: ToStatic,
+    T::Static: Clone,
 {
-    type Static = Cow<'static, [S]>;
+    type Static = Cow<'static, [T::Static]>;
 
-    fn to_static(&self) -> Self::Static {
-        self.iter().map(ToStatic::to_static).collect()
+    fn to_static(self) -> Self::Static {
+        self.into_iter().map(ToStatic::to_static).collect()
+    }
+}
+
+impl<T> ToStatic for &[T]
+where
+    T: ToStatic + Clone,
+    T::Static: Clone,
+{
+    type Static = Cow<'static, [T::Static]>;
+
+    fn to_static(self) -> Self::Static {
+        self.iter().cloned().map(ToStatic::to_static).collect()
     }
 }
 
@@ -68,9 +104,9 @@ mod to_static_tests {
     impl ToStatic for SomeObject<'_> {
         type Static = SomeObject<'static>;
 
-        fn to_static(&self) -> Self::Static {
+        fn to_static(self) -> Self::Static {
             Self::Static {
-                link: self.link.to_static(),
+                link: self.link.to_static().into(),
             }
         }
     }
@@ -82,7 +118,6 @@ mod to_static_tests {
             link: Cow::Borrowed(&arr),
         };
         let static_copy = link.to_static();
-        drop(link);
         arr[0] = 5;
         assert_eq!(&*static_copy.link, [1, 2, 3]);
         assert_eq!(arr, [5, 2, 3]);
@@ -102,7 +137,7 @@ mod to_static_tests {
             link: Cow::Owned(vec![3, 4, 5]),
         };
         let list: Cow<[SomeObject]> = Cow::Owned(vec![link1, link2, link3]);
-        let static_copy: Cow<[SomeObject]> = list.to_static();
+        let static_copy: Cow<[SomeObject]> = list.to_static().into();
         arr[0] = 5;
         arr2[1] = 5;
         assert_eq!(&*static_copy[0].link, [1, 2, 3]);

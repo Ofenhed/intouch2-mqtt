@@ -1,28 +1,29 @@
 use intouch2::{
+    ClonedStatic as _,
     composer::compose_network_data,
     object::{NetworkPackage, NetworkPackageData},
     parser::parse_network_data,
-    ToStatic,
 };
 use std::{
     borrow::Cow,
     cmp::min,
-    mem::{take, MaybeUninit},
+    mem::{MaybeUninit, take},
     net::SocketAddr,
     sync::Arc,
     time::Duration,
 };
 use tokio::{
     net::UdpSocket,
-    sync::{broadcast, mpsc, Mutex, RwLock},
+    sync::{Mutex, RwLock, broadcast, mpsc},
     task::JoinSet,
-    time::{self, timeout_at, Instant},
+    time::{self, Instant, timeout_at},
 };
 use tracing::{debug, info, trace, trace_span, warn};
 
 use crate::{
+    Buffers, NoClone, StaticBox,
     port_forward_mapping::{ForwardAddr, ForwardMapping},
-    unspecified_source_for_taget, Buffers, NoClone, StaticBox,
+    unspecified_source_for_taget,
 };
 
 #[derive(thiserror::Error, Debug)]
@@ -223,10 +224,10 @@ impl PortForwardBuilder {
                         Err(_) => break 'ignore_package,
                         Ok(len) => match parse_network_data(&buf[0..len?]) {
                             Err(_) | Ok(NetworkPackage::Addressed { .. }) => {
-                                continue 'ignore_package
+                                continue 'ignore_package;
                             }
                             Ok(NetworkPackage::Hello(spa_name)) => {
-                                break 'retry Ok(spa_name.into_owned())
+                                break 'retry Ok(spa_name.into_owned());
                             }
                         },
                     }
@@ -335,8 +336,8 @@ impl PortForward {
                         let mut buf = buffers.take_or(|| Vec::with_capacity(NET_BUFFER_SIZE));
                         let Some(recv_sock) = std::mem::take(recv_sock) else {
                             unreachable!(
-                "recv_sock will always be set when FromClient or SpawnClientListener is returned"
-              )
+                                "recv_sock will always be set when FromClient or SpawnClientListener is returned"
+                            )
                         };
                         workers.spawn(async {
                             buf.clear();
@@ -356,8 +357,8 @@ impl PortForward {
                         let mut buf = buffers.take_or(|| Vec::with_capacity(NET_BUFFER_SIZE));
                         let Some(recv_sock) = std::mem::take(recv_sock) else {
                             unreachable!(
-                "recv_sock will always be set when FromSpa or SpawnSpaListener is returned"
-              )
+                                "recv_sock will always be set when FromSpa or SpawnSpaListener is returned"
+                            )
                         };
                         workers.spawn(async {
                             buf.clear();
@@ -376,7 +377,7 @@ impl PortForward {
                         let Some(mut recv_pipe) = std::mem::take(recv_pipe) else {
                             unreachable!(
                                 "recv_pipe will always be set when FromPipe or SpawnPipeListener is returned"
-                                )
+                            )
                         };
                         workers.spawn(async {
                             if let Some(data) = recv_pipe.recv().await {
@@ -424,8 +425,10 @@ impl PortForward {
                                 debug!(parent: &span_dump_traffic, "Self -> {}", package.display());
                             }
                             if let Some(dump_pipe) = &mut self.package_dump_pipe {
-                                dump_pipe
-                                    .send((DataSource::From(Player::Local), package.to_static()))?;
+                                dump_pipe.send((
+                                    DataSource::From(Player::Local),
+                                    package.cloned_static(),
+                                ))?;
                             }
                             let send_spa = self.send_spa.clone();
                             workers.spawn(async move {
@@ -474,7 +477,7 @@ impl PortForward {
                             if let Some(dump_pipe) = &mut self.package_dump_pipe {
                                 dump_pipe.send((
                                     DataSource::From(Player::Client(source_addr)),
-                                    content.to_static(),
+                                    content.cloned_static(),
                                 ))?;
                             }
                             let count_before = self.forwards.len();
@@ -495,7 +498,7 @@ impl PortForward {
                                 if let (Some(pipe), NetworkPackageData::SetStatus { .. }) =
                                     (&self.send_pipe, content)
                                 {
-                                    Some((pipe.clone(), package.to_static()))
+                                    Some((pipe.clone(), package.cloned_static()))
                                 } else {
                                     None
                                 };
@@ -537,7 +540,9 @@ impl PortForward {
                         }
                         Ok(NetworkPackage::Hello(_)) => {
                             let Some(send_clients) = &self.send_clients else {
-                                unreachable!("How can you get messages from clients if you don't have any clients?")
+                                unreachable!(
+                                    "How can you get messages from clients if you don't have any clients?"
+                                )
                             };
                             if self
                                 .forwards
@@ -582,7 +587,7 @@ impl PortForward {
                                         {
                                             debug!(parent: &span_dump_traffic, "Self <- {}", content.display());
                                         }
-                                        let package = package.to_static();
+                                        let package = package.cloned_static();
                                         if let (
                                             Some(dump_pipe),
                                             NetworkPackage::Addressed { data, .. },
@@ -590,7 +595,7 @@ impl PortForward {
                                         {
                                             dump_pipe.send((
                                                 DataSource::To(Player::Local),
-                                                data.into(),
+                                                data.cloned_static(),
                                             ))?;
                                         }
                                         workers.spawn(async move {
@@ -600,7 +605,9 @@ impl PortForward {
                                     }
                                     ForwardAddr::Socket(addr) => {
                                         let Some(send_clients) = &self.send_clients else {
-                                            unreachable!("How can you send to clients if there are no clients?")
+                                            unreachable!(
+                                                "How can you send to clients if there are no clients?"
+                                            )
                                         };
                                         if self.dump_traffic
                                             && !matches!(
@@ -613,7 +620,7 @@ impl PortForward {
                                         if let Some(dump_pipe) = &mut self.package_dump_pipe {
                                             dump_pipe.send((
                                                 DataSource::To(Player::Client(addr)),
-                                                content.to_static(),
+                                                content.cloned_static(),
                                             ))?;
                                         }
                                         let send_clients = send_clients.clone();
@@ -622,7 +629,7 @@ impl PortForward {
                                             NetworkPackageData::PushStatus { .. },
                                         ) = (&self.send_pipe, content)
                                         {
-                                            Some((sender.clone(), package.to_static()))
+                                            Some((sender.clone(), package.cloned_static()))
                                         } else {
                                             None
                                         };

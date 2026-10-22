@@ -1,10 +1,10 @@
 use std::{
     borrow::Cow,
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     future::Future,
     mem,
     path::Path,
-    pin::{pin, Pin},
+    pin::{Pin, pin},
     sync::Arc,
 };
 
@@ -12,7 +12,7 @@ use intouch2::object::ReminderInfo;
 use mqttrs::{Packet, Publish, QoS, QosPid, SubscribeTopic};
 use tokio::{
     select,
-    sync::{self, mpsc, watch, Mutex, OwnedMutexGuard},
+    sync::{self, Mutex, OwnedMutexGuard, mpsc, watch},
     task::JoinSet,
 };
 use tracing::{trace_span, warn};

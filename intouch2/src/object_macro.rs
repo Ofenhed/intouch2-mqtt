@@ -85,9 +85,14 @@ macro_rules! gen_packages {
       impl<$struct_life> $crate::ToStatic for $struct<$struct_life> {
           type Static = $struct<'static>;
 
-          fn to_static(&self) -> Self::Static {
+          fn to_static(self) -> Self::Static {
+              $(
+                  let Self {
+                      $($field),*
+                  } = self;
+              )?
               Self::Static $({
-                  $($field: $crate::ToStatic::to_static(&self.$field),)*
+                  $($field: $crate::ToStatic::to_static($field)),*
               })?
           }
       }
@@ -98,15 +103,15 @@ macro_rules! gen_packages {
       impl $crate::ToStatic for $struct {
           type Static = Self;
 
-          fn to_static(&self) -> Self::Static {
+          fn to_static(self) -> Self::Static {
+              $(
+                  let Self {
+                      $($field),*
+                  } = self;
+              )?
               Self {$(
-                  $($field: $crate::ToStatic::to_static(&self.$field),)*
+                  $($field: $crate::ToStatic::to_static($field),)*
               )?}
-          }
-      }
-      impl From<&$struct> for $struct {
-          fn from(other: &$struct) -> $struct {
-              other.to_static()
           }
       }
   };
@@ -176,11 +181,6 @@ macro_rules! gen_packages {
     $( { SAME $struct_life:lifetime } )?
     $( { STATIC $trait_life:lifetime } )?) => {
       $(
-        impl<$struct_life> From<&$struct<$struct_life>> for $struct<'static> {
-            fn from(other: &$struct<$struct_life>) -> $struct<'static> {
-                $crate::ToStatic::to_static(other)
-            }
-        }
         impl<$struct_life> From<$struct<$struct_life>> for $enum<$struct_life> {
             fn from(other: $struct<$struct_life>) -> $enum<$struct_life> {
                 $enum::$struct(other)
@@ -233,13 +233,8 @@ macro_rules! gen_packages {
     impl $crate::ToStatic for $tailing<'_> {
         type Static = $tailing<'static>;
 
-        fn to_static(&self) -> Self::Static {
-            $tailing($crate::ToStatic::to_static(&self.0))
-        }
-    }
-    impl<'a> From<&$tailing<'a>> for $tailing<'static> {
-        fn from(other: &$tailing<'a>) -> $tailing<'static> {
-            $crate::ToStatic::to_static(other)
+        fn to_static(self) -> Self::Static {
+            $tailing($crate::ToStatic::to_static(self.0).into())
         }
     }
     impl<'a> From<$tailing<'a>> for $enum<'a> {
@@ -263,8 +258,8 @@ macro_rules! gen_packages {
     impl $crate::ToStatic for $simple {
         type Static = $simple;
 
-        fn to_static(&self) -> Self {
-            self.to_owned()
+        fn to_static(self) -> Self {
+            self
         }
     }
     impl $crate :: object :: dispatch :: DatasType for $simple {
@@ -309,21 +304,11 @@ macro_rules! gen_packages {
     impl<'a> $crate::ToStatic for $enum_name<'a> {
         type Static = $enum_name<'static>;
 
-        fn to_static(&self) -> Self::Static {
+        fn to_static(self) -> Self::Static {
             match self {
                 $($enum_name::$const => $enum_name::$const,)*
                 $($enum_name::$arg(x) => $enum_name::$arg(x.to_static()),)*
             }
-        }
-    }
-
-    impl<'a> From<&$enum_name<'a>> for $enum_name<'static> {
-        fn from(from: &$enum_name<'a>) -> Self {
-            match from {
-                $($enum_name::$const => $enum_name::$const,)*
-                $($enum_name::$arg(x) => $enum_name::$arg(std::convert::Into::into(x)),)*
-            }
-
         }
     }
   };

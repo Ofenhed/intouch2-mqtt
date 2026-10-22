@@ -6,7 +6,7 @@ pub use crate::object_traits::*;
 
 pub use package_data::NetworkPackageData;
 
-use crate::{ToStatic, static_cow};
+use crate::ToStatic;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
@@ -18,7 +18,7 @@ pub struct StatusChange<'a> {
 impl ToStatic for StatusChange<'_> {
     type Static = StatusChange<'static>;
 
-    fn to_static(&self) -> Self::Static {
+    fn to_static(self) -> Self::Static {
         Self::Static {
             change: self.change,
             data: self.data.to_static(),
@@ -137,8 +137,8 @@ macro_rules! simple_type {
         }
         impl ToStatic for $ty {
             type Static = $ty;
-            fn to_static(&self) -> Self::Static {
-                *self
+            fn to_static(self) -> Self::Static {
+                self
             }
         }
         simple_type!{ $($($rest)*)? }
@@ -338,14 +338,14 @@ impl NetworkPackageData<'_> {
 
 impl ToStatic for NetworkPackage<'_> {
     type Static = NetworkPackage<'static>;
-    fn to_static(&self) -> Self::Static {
+    fn to_static(self) -> Self::Static {
         match self {
             NetworkPackage::Addressed { src, dst, data } => NetworkPackage::Addressed {
-                src: src.as_ref().map(ToStatic::to_static),
-                dst: dst.as_ref().map(ToStatic::to_static),
+                src: src.map(ToStatic::to_static).map(Into::into),
+                dst: dst.map(ToStatic::to_static).map(Into::into),
                 data: data.to_static(),
             },
-            NetworkPackage::Hello(hello) => NetworkPackage::Hello(hello.to_static()),
+            NetworkPackage::Hello(hello) => NetworkPackage::Hello(hello.to_static().into()),
         }
     }
 }
@@ -359,19 +359,6 @@ pub enum NetworkPackage<'a> {
         data: NetworkPackageData<'a>,
     },
     Hello(Cow<'a, [u8]>),
-}
-
-impl<'a> From<&NetworkPackage<'a>> for NetworkPackage<'static> {
-    fn from(package: &NetworkPackage<'a>) -> NetworkPackage<'static> {
-        match package {
-            NetworkPackage::Addressed { src, dst, data } => NetworkPackage::Addressed {
-                src: src.as_ref().map(static_cow),
-                dst: dst.as_ref().map(static_cow),
-                data: data.to_static(),
-            },
-            NetworkPackage::Hello(x) => NetworkPackage::Hello(static_cow(x)),
-        }
-    }
 }
 
 impl std::fmt::Display for NetworkPackage<'_> {
@@ -390,20 +377,6 @@ impl std::fmt::Display for NetworkPackage<'_> {
             NetworkPackage::Hello(msg) => {
                 f.write_fmt(format_args!("Hello({})", String::from_utf8_lossy(msg)))
             }
-        }
-    }
-}
-
-impl NetworkPackage<'_> {
-    pub fn to_static(&self) -> NetworkPackage<'static> {
-        use NetworkPackage as X;
-        match self {
-            X::Addressed { src, dst, data } => X::Addressed {
-                src: src.clone().map(|x| x.into_owned().into()),
-                dst: dst.clone().map(|x| x.into_owned().into()),
-                data: data.to_static(),
-            },
-            X::Hello(x) => X::Hello(x.clone().into_owned().into()),
         }
     }
 }

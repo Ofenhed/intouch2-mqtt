@@ -10,6 +10,7 @@ use std::{
 };
 
 use intouch2::{
+    ClonedStatic as _, ToStatic as _,
     datas::GeckoDatas,
     generate_uuid,
     object::{
@@ -588,7 +589,7 @@ impl SpaConnection {
                     };
                     let mut rx = pipe.subscribe();
                     'retry: loop {
-                        tx.send(req.to_static()).await?;
+                        tx.send(req.cloned_static()).await?;
                         let mut expected = 0;
                         let mut data_read = 0;
                         let timeout = Duration::from_secs(5);

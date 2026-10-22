@@ -1,5 +1,7 @@
 extern crate nom;
 
+use crate::ToStatic as _;
+
 use super::object::*;
 
 use nom::{bytes::complete::*, combinator::opt, *};
@@ -202,7 +204,7 @@ pub fn parse_network_data<'a>(input: &'a [u8]) -> Result<NetworkPackage<'a>, Par
         ([], msg) => Ok(msg),
         (tail, msg) => Err(ParseError::TailingData {
             tail: tail.into(),
-            msg: NetworkPackage::<'static>::from(&msg),
+            msg: msg.to_static(),
         }),
     }
 }
