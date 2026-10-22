@@ -72,12 +72,13 @@ where
 impl<T> ToStatic for Vec<T>
 where
     T: ToStatic,
-    T::Static: Clone,
+    [T::Static]: ToOwned,
+    <[T::Static] as ToOwned>::Owned: FromIterator<T::Static>,
 {
     type Static = Cow<'static, [T::Static]>;
 
     fn to_static(self) -> Self::Static {
-        self.into_iter().map(ToStatic::to_static).collect()
+        Cow::Owned(self.into_iter().map(ToStatic::to_static).collect())
     }
 }
 
