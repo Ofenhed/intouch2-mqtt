@@ -58,7 +58,7 @@ where
     type Static = Cow<'static, [S; N]>;
 
     fn to_static(self) -> Self::Static {
-        let mut new_list = Vec::with_capacity(self.len());
+        let mut new_list = Vec::with_capacity(N);
         for item in self {
             new_list.push(item.clone().to_static());
         }
