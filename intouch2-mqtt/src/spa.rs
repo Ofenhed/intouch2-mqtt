@@ -259,7 +259,7 @@ impl SpaConnection {
         Ok(())
     }
 
-    pub async fn wait_for_valid_data_with_ticks(&self) -> Result<(), SpaError> {
+    pub async fn ticking_wait_for_valid_data(&self) -> Result<(), SpaError> {
         loop {
             select! {
                 state_valid = self.wait_for_valid_data() => {
@@ -613,6 +613,9 @@ impl SpaConnection {
                                             ))?;
                                         }
                                         let end = data_read + data.len();
+                                        let _span_add_data = tracing::trace_span!(
+                                            "add initial gecko data to [{data_read}..{end}]"
+                                        );
                                         let mut gecko_data = gecko_data.lock().await;
                                         gecko_data[data_read..end].copy_from_slice(&data);
                                         if end == usize::from(gecko_data_len) {

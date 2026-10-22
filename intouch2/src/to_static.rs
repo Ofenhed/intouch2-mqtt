@@ -60,7 +60,7 @@ where
     fn to_static(self) -> Self::Static {
         let mut new_list = Vec::with_capacity(N);
         for item in self {
-            new_list.push(item.clone().to_static());
+            new_list.push(item.to_static());
         }
         let Ok(b): Result<Box<[S; N]>, _> = new_list.try_into() else {
             unreachable!("The size is compile time checked as well")

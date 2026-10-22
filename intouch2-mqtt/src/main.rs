@@ -488,7 +488,7 @@ async fn main() -> anyhow::Result<()> {
             info!(parent: &span_initial_memory, "Waiting for complete initial memory dump");
             loop {
                 select! {
-                    wait_result = spa.wait_for_valid_data_with_ticks() => {
+                    wait_result = spa.ticking_wait_for_valid_data() => {
                         let _: () = wait_result.into_span(&span_initial_memory)?;
                         break
                     }

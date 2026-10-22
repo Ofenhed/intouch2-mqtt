@@ -161,11 +161,17 @@ fn status_update() {
         assert_eq!(length as usize, data.len());
         status_package.to_static()
     }
-    let NetworkPackageData::Status(package_data::Status { data, .. }) = parse_data(&inner_data[..])
-    else {
-        unreachable!()
+    let pkg = {
+        let pkg = parse_data(&inner_data[..]);
+        let NetworkPackageData::Status(package_data::Status { ref data, .. }) = pkg else {
+            unreachable!()
+        };
+        assert_eq!(data[..], inner_data[..]);
+        pkg.to_static()
     };
-    assert_eq!(data[..], inner_data[..]);
+    assert!(
+        matches!(pkg, NetworkPackageData::Status(package_data::Status { data: inner, .. }) if inner == inner_data)
+    );
 }
 
 #[test]
