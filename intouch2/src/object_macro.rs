@@ -27,7 +27,7 @@ macro_rules! gen_packages {
 
   // Finalize the result of BUILD_STRUCT_ARGS
   (FINISH_BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* }) => {
-      #[derive(Debug, PartialEq, Eq, Clone)]
+      #[derive(Debug, PartialEq, Eq)]
       $(#[$meta])*
       #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
       pub struct $struct $(<$struct_lifetime>)? {
@@ -116,6 +116,22 @@ macro_rules! gen_packages {
       }
   };
 
+  (ENUMERATE_STRUCT_CLONE $struct:ident $($struct_life:lifetime)? [ $($($field:ident)+)? ]) => {
+      impl$(<$struct_life>)? Clone for $struct $(<$struct_life>)? {
+
+          fn clone(&self) -> Self {
+              $(
+                  let Self {
+                      $($field),*
+                  } = self;
+              )?
+              Self {$(
+                  $($field: $field.clone()),*
+              )?}
+          }
+      }
+  };
+
   // Throw compile error if both $struct_life and $trait_life has a lifetime
   (ASSERT_HAS_SINGLE_LIFETIME $lt:lifetime) => {};
   (ASSERT_HAS_SINGLE_LIFETIME $($lt:lifetime $($lt2:lifetime)+)? ) => { compile_error!{ "Exactly one lifetime must be set for GENERATE_STRUCT_IMPLS" } };
@@ -168,6 +184,7 @@ macro_rules! gen_packages {
 
       // Add trait implementations for structs with lifetime
       $crate::gen_packages!{ ENUMERATE_STRUCT_TO_STATIC $struct $($struct_life)? [ $($field)* ] }
+      $crate::gen_packages!{ ENUMERATE_STRUCT_CLONE $struct $($struct_life)? [ $($field)* ] }
       $crate::gen_packages!{ ADD_FROM_ENUM_IMPL $($enum)? $struct { $(SAME $struct_life)? $(STATIC $trait_life)? } }
   };
 
@@ -206,7 +223,7 @@ macro_rules! gen_packages {
 
   // Implement a simple package, only holding a tag and an array with the rest of the data
   (WITH_TYPES_LIST $enum:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(#[$meta:meta])* $tailing:ident ( $verb:literal : Tailing ) $(,$($rest:tt)*)?) => {
-    #[derive(Debug, PartialEq, Eq, Clone)]
+    #[derive(Debug, PartialEq, Clone, Eq)]
     $(#[$meta])*
     #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
     pub struct $tailing<'a>(pub std::borrow::Cow<'a, [u8]>);

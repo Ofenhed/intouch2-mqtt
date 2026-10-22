@@ -52,7 +52,7 @@ pub enum ReminderIndex {
 pub type ReminderData = i16;
 
 crate::gen_packages! {
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, PartialEq, Eq)]
     #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
     pub struct ReminderInfo {
         pub index: ReminderIndex,
@@ -62,7 +62,7 @@ crate::gen_packages! {
 }
 
 crate::gen_packages! {
-  #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+  #[derive(Copy, Debug, PartialEq, Eq)]
   #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
   pub struct WatercareInfo {
       pub mode: u8,
