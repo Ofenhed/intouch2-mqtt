@@ -3,8 +3,8 @@ use std::{
     collections::HashMap,
     ops::{Index, Range},
     sync::{
-        atomic::{AtomicU8, Ordering},
         Arc,
+        atomic::{AtomicU8, Ordering},
     },
     time::Duration,
 };
@@ -13,7 +13,7 @@ use intouch2::{
     datas::GeckoDatas,
     generate_uuid,
     object::{
-        package_data, NetworkPackage, NetworkPackageData, ReminderData, ReminderInfo, StatusChange,
+        NetworkPackage, NetworkPackageData, ReminderData, ReminderInfo, StatusChange, package_data,
     },
     parser::ParseError,
 };
@@ -25,7 +25,7 @@ use tokio::{
     time::{self, timeout},
 };
 
-use crate::{port_forward::SpaPipe, WithBuffer};
+use crate::{WithBuffer, port_forward::SpaPipe};
 
 #[allow(clippy::type_complexity)]
 pub struct SpaConnection {
@@ -243,7 +243,7 @@ impl SpaConnection {
     }
 
     pub async fn tick(&self) -> Result<(), SpaError> {
-        let Some(ref jobs) = self.jobs else {
+        let Some(jobs) = &self.jobs else {
             return Err(SpaError::NotInitialized);
         };
         let mut jobs = jobs.lock().await;
@@ -258,19 +258,27 @@ impl SpaConnection {
         Ok(())
     }
 
-    pub async fn wait_for_valid_data(&self) -> Result<(), SpaError> {
-        let mut subscriber = self.state_valid.subscribe();
+    pub async fn wait_for_valid_data_with_ticks(&self) -> Result<(), SpaError> {
         loop {
-            if *subscriber.borrow_and_update() {
-                return Ok(());
-            }
             select! {
+                state_valid = self.wait_for_valid_data() => {
+                    return state_valid
+                }
                 tick_result = self.tick() => {
                     let _: () = tick_result?;
                 }
-                state_valid = subscriber.changed() => {
-                    let _: () = state_valid?;
+            }
+        }
+    }
+
+    pub fn wait_for_valid_data(&self) -> impl Future<Output = Result<(), SpaError>> + 'static {
+        let mut subscriber = self.state_valid.subscribe();
+        async move {
+            loop {
+                if *subscriber.borrow_and_update() {
+                    return Ok(());
                 }
+                subscriber.changed().await?;
             }
         }
     }
@@ -351,8 +359,10 @@ impl SpaConnection {
             let tx = self.pipe.tx.clone();
             let seq = self.seq.clone();
             let reminders_list = self.reminders.clone();
+            let valid_data = self.wait_for_valid_data();
             jobs.spawn(async move {
                 let mut commanders = commanders.lock().await;
+                valid_data.await?;
                 loop {
                     match commanders.recv().await {
                         None => break Ok(()),
@@ -463,8 +473,10 @@ impl SpaConnection {
             let watercare_mode = self.watercare_mode.clone();
             let seq = self.seq.clone();
             let mut listener = self.pipe.subscribe();
+            let valid_data = self.wait_for_valid_data();
             jobs.spawn(async move {
                 let mut watercare_interval = watercare_interval.lock().await;
+                valid_data.await?;
                 loop {
                     select! {
                         _ = watercare_interval.tick() => {
@@ -506,8 +518,10 @@ impl SpaConnection {
             let reminders_list = self.reminders.clone();
             let seq = self.seq.clone();
             let mut listener = self.pipe.subscribe();
+            let valid_data = self.wait_for_valid_data();
             jobs.spawn(async move {
                 let mut reminders_interval = reminders_interval.lock().await;
+                valid_data.await?;
                 loop {
                     select! {
                         _ = reminders_interval.tick() => {
