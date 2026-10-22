@@ -1,13 +1,12 @@
 use anyhow::Context;
 use clap::{Args, Parser};
-use intouch2::object::{package_data, NetworkPackageData};
+use intouch2::object::{NetworkPackageData, package_data};
 use intouch2_mqtt::{
-    home_assistant,
+    ResultSpan as _, home_assistant,
     mapping::{self, Mapping},
     mqtt_session::{MqttAuth, SessionBuilder as MqttSession},
     port_forward::{FullPackagePipe, PortForwardBuilder, PortForwardError},
     spa::{SpaConnection, SpaError},
-    ResultSpan as _,
 };
 use mqttrs::SubscribeTopic;
 use serde_json::json;
@@ -21,7 +20,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::Duration,
 };
-use tracing::{debug, event, info, trace_span, Level};
+use tracing::{Level, debug, event, info, trace_span};
 
 use serde::Deserialize;
 
@@ -322,7 +321,7 @@ async fn main() -> anyhow::Result<()> {
             (None, Some(_)) | (Some(_), None) => {
                 return Err(Error::InvalidArguments(
                     "mqtt_username or mqtt_password neds to be both set or both unset",
-                ))?
+                ))?;
             }
         };
         let mqtt_availability = args.mqtt_availability_topic.as_deref().map(|availability| {
@@ -380,9 +379,9 @@ async fn main() -> anyhow::Result<()> {
     let mut join_set = JoinSet::<anyhow::Result<JoinResult>>::new();
     match (&mut mqtt, &args.package_dump_mqtt_topic) {
         (None, Some(_)) => {
-            return Err(Error::InvalidArguments(
+            Err(Error::InvalidArguments(
                 "package_dump_mqtt_topic requires a MQTT connection",
-            ))?
+            ))?;
         }
         (_, None) => (),
         (Some(mqtt), Some(dump_topic)) => {
@@ -464,7 +463,7 @@ async fn main() -> anyhow::Result<()> {
         None
     };
     match (mqtt, &mut spa, &args.memory_changes_mqtt_topic) {
-        (Some(mut mqtt), Some(ref mut spa), memory_change_topic) => {
+        (Some(mut mqtt), Some(spa), memory_change_topic) => {
             let span_memory_changes = trace_span!("spa memory changes");
             let (spa_name, spa_version) = {
                 let spa_name = String::from_utf8_lossy(spa.name()).to_string();
@@ -635,9 +634,9 @@ async fn main() -> anyhow::Result<()> {
             });
         }
         (None, _, Some(_)) | (_, None, Some(_)) => {
-            return Err(Error::InvalidArguments(
+            Err(Error::InvalidArguments(
                 "mqtt_memory_changes_topic requires both mqtt and spa_memory_size to be set",
-            ))?
+            ))?;
         }
         (_, _, None) => (),
     }

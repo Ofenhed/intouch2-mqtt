@@ -72,7 +72,7 @@ impl<'a> DatasContent<'a> for u16 {
         nom::number::complete::be_u16(input)
     }
 
-    fn compose(&self) -> Cow<'a, [u8]> {
+    fn compose(&self) -> Cow<'_, [u8]> {
         Cow::Owned(self.to_be_bytes().into())
     }
 }
@@ -82,7 +82,7 @@ impl<'a> DatasContent<'a> for i16 {
         nom::number::complete::le_i16(input)
     }
 
-    fn compose(&self) -> Cow<'a, [u8]> {
+    fn compose(&self) -> Cow<'_, [u8]> {
         Cow::Owned(self.to_le_bytes().into())
     }
 }
@@ -94,7 +94,7 @@ impl<'a, T1: DatasContent<'a>, T2: DatasContent<'a>> DatasContent<'a> for (T1, T
         Ok((input, (t1, t2)))
     }
 
-    fn compose(&self) -> Cow<'a, [u8]> {
+    fn compose(&self) -> Cow<'_, [u8]> {
         Cow::Owned([self.0.compose(), self.1.compose()].concat())
     }
 }
@@ -119,7 +119,7 @@ impl<'a, T: DatasContent<'a> + Clone> DatasContent<'a> for Cow<'a, T> {
         Ok((input, Cow::Owned(parsed)))
     }
 
-    fn compose(&self) -> Cow<'a, [u8]> {
+    fn compose(&self) -> Cow<'_, [u8]> {
         T::compose(self)
     }
 }

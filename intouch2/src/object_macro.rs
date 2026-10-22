@@ -148,7 +148,7 @@ macro_rules! gen_packages {
             Ok((input, Self { $($field: $field.into(),)* }))
         }
 
-        fn compose(&self) -> std::borrow::Cow<$($struct_life)? $($trait_life)?, [u8]> {
+        fn compose(&self) -> std::borrow::Cow<'_, [u8]> {
             let mut output = vec![];
             $(
                 $(output.extend_from_slice($static);)?
@@ -219,9 +219,8 @@ macro_rules! gen_packages {
         Self(tail.into())
       }
 
-      fn into(&'_ self) -> &'a [u8] {
-        // TODO: Figure out why this lifetime screws up
-        unsafe { std::mem::transmute(&*self.0) }
+      fn into(&self) -> &[u8] {
+        &self.0[..]
       }
     }
     impl std::ops::Deref for $tailing<'_> {
@@ -299,7 +298,7 @@ macro_rules! gen_packages {
         $crate::gen_packages!( PARSER_CONTENT $($const)* $($arg)* )(input)
       }
       #[allow(dead_code)]
-      pub fn compose(&self) -> std::borrow::Cow<'a, [u8]> {
+      pub fn compose(&self) -> std::borrow::Cow<'_, [u8]> {
           match self {
               $($enum_name::$const => $const.compose(),)*
               $($enum_name::$arg(x) => x.compose(),)*

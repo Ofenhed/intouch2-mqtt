@@ -72,7 +72,7 @@ pub trait TailingDatasContent<'a>:
 
     fn from(tail: &'a [u8]) -> Self;
 
-    fn into(&'_ self) -> &'a [u8];
+    fn into(&self) -> &[u8];
 }
 
 use dispatch::*;
@@ -80,7 +80,7 @@ disjoint_impls! {
   pub trait DatasContent<'a>: Sized {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self>;
 
-    fn compose(&self) -> Cow<'a, [u8]>;
+    fn compose(&self) -> Cow<'_, [u8]>;
   }
 
   impl<'a, A: SimpleDatasContent + DatasType<Group=Simple>> DatasContent<'a> for A {
@@ -92,7 +92,7 @@ disjoint_impls! {
       }
     }
 
-    fn compose(&self) -> Cow<'a, [u8]> {
+    fn compose(&self) -> Cow<'_, [u8]> {
       Cow::Borrowed(Self::VERB)
     }
   }
@@ -102,7 +102,7 @@ disjoint_impls! {
         A::parse_bytes(input).map(|(input, this)| (input, this.to_owned()))
     }
 
-    fn compose(&self) -> Cow<'a, [u8]> {
+    fn compose(&self) -> Cow<'_, [u8]> {
       Cow::Owned(self.to_bytes_soft().into())
     }
   }
@@ -113,8 +113,8 @@ disjoint_impls! {
       Ok((&input[input.len()..], A::from(input)))
     }
 
-    fn compose(&self) -> Cow<'a, [u8]> {
-      let parts: &[&'a [u8]] = &[Self::VERB, A::into(self)];
+    fn compose(&self) -> Cow<'_, [u8]> {
+      let parts: &[&[u8]] = &[Self::VERB, A::into(self)];
       Cow::Owned(parts.concat())
     }
   }

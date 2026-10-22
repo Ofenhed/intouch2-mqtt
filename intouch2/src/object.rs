@@ -6,7 +6,7 @@ pub use crate::object_traits::*;
 
 pub use package_data::NetworkPackageData;
 
-use crate::{static_cow, ToStatic};
+use crate::{ToStatic, static_cow};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
@@ -345,7 +345,14 @@ impl ToStatic for NetworkPackageData<'_> {
 impl ToStatic for NetworkPackage<'_> {
     type Static = NetworkPackage<'static>;
     fn to_static(&self) -> Self::Static {
-        self.into()
+        match self {
+            NetworkPackage::Addressed { src, dst, data } => NetworkPackage::Addressed {
+                src: src.as_ref().map(ToStatic::to_static),
+                dst: dst.as_ref().map(ToStatic::to_static),
+                data: data.to_static(),
+            },
+            NetworkPackage::Hello(hello) => NetworkPackage::Hello(hello.to_static()),
+        }
     }
 }
 

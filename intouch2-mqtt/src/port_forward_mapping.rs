@@ -3,8 +3,8 @@ use std::{
     cell::SyncUnsafeCell,
     cmp::max,
     collections::{
-        hash_map::{self},
         HashMap,
+        hash_map::{self},
     },
     net::SocketAddr,
     sync::{Arc, Weak},
@@ -62,7 +62,9 @@ impl<T: Send + Sync> ForwardMappingInfo<T> {
     pub fn context(&self) -> &T {
         match self.context {
             Some(ref context) => context,
-            None => unreachable!("Context is never called on a dead ForwardMappingInfo, and context is always Some for a valid ForwardMappingInfo")
+            None => unreachable!(
+                "Context is never called on a dead ForwardMappingInfo, and context is always Some for a valid ForwardMappingInfo"
+            ),
         }
     }
     pub fn timeout(&self, handshake_timeout: Duration, timeout: Duration) -> Instant {
@@ -188,11 +190,9 @@ impl<T: Send + Sync> ForwardMapping<T> {
             .addrs
             .get_mut(addr.borrow())
             .map(|x| unpack_owned_cell_mut(x.clone()))
+            && matches!(self.ids.get(id.borrow()).map(unpack_cell), Some(from_id) if std::ptr::eq(from_addr, from_id))
         {
-            if matches!(self.ids.get(id.borrow()).map(unpack_cell), Some(from_id) if std::ptr::eq(from_addr, from_id))
-            {
-                return from_addr;
-            }
+            return from_addr;
         }
         let (addr, id) = self.remove_and_reuse_arcs(addr, id);
         let info = Arc::new(SyncUnsafeCell::new(ForwardMappingInfo {
@@ -203,14 +203,13 @@ impl<T: Send + Sync> ForwardMapping<T> {
             context: Some(context),
         }));
         self.ids.insert(id, info.clone());
-        let reply = match self.addrs.entry(addr) {
+        match self.addrs.entry(addr) {
             hash_map::Entry::Occupied(mut entry) => {
                 entry.insert(info);
                 unpack_owned_cell_mut(entry.get().clone())
             }
             hash_map::Entry::Vacant(entry) => unpack_cell_mut(entry.insert(info)),
-        };
-        reply
+        }
     }
     pub fn remove_id(&mut self, id: &PeerIdType) -> Option<T> {
         self._remove_id(id).map(|x| x.0)

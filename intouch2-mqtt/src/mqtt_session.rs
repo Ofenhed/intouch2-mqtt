@@ -2,10 +2,10 @@ use mqttrs::*;
 use std::{
     net::SocketAddr,
     path::Path,
-    pin::{pin, Pin},
+    pin::{Pin, pin},
     sync::{
-        atomic::{AtomicU16, Ordering},
         Arc,
+        atomic::{AtomicU16, Ordering},
     },
 };
 use tracing::info;
@@ -53,7 +53,7 @@ impl MqttPacket {
 }
 
 unsafe fn transmute_lifetime<'b, T: ?Sized>(from: &T) -> &'b T {
-    std::mem::transmute(from)
+    unsafe { std::mem::transmute(from) }
 }
 
 impl TryFrom<&'_ [u8]> for MqttPacket {

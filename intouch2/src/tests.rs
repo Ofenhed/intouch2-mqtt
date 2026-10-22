@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use crate::ToStatic as _;
+
 use super::{composer::*, object::*, parser::*};
 
 #[test]
@@ -132,6 +134,41 @@ fn parse_watercare() {
 }
 
 #[test]
+fn status_update() {
+    let inner_data = (0..39).collect::<Vec<u8>>();
+    fn parse_data(inner: &[u8]) -> NetworkPackageData<'static> {
+        let data = [
+            &b"<PACKT><SRCCN>SPA1</SRCCN><DESCN>DEV1</DESCN><DATAS>STATV\x00\x01\x27"[..],
+            &inner[..],
+            &b"</DATAS></PACKT>"[..],
+        ]
+        .concat();
+        let data = parse_network_data(&data);
+        println!("{data:?}");
+        let Ok(NetworkPackage::Addressed {
+            data: status_package,
+            ..
+        }) = data
+        else {
+            panic!("Package not parsed to addressed: {data:?}");
+        };
+        let NetworkPackageData::Status(package_data::Status {
+            length, ref data, ..
+        }) = status_package
+        else {
+            panic!("Package not parsed as status");
+        };
+        assert_eq!(length as usize, data.len());
+        status_package.to_static()
+    }
+    let NetworkPackageData::Status(package_data::Status { data, .. }) = parse_data(&inner_data[..])
+    else {
+        unreachable!()
+    };
+    assert_eq!(data[..], inner_data[..]);
+}
+
+#[test]
 fn id_packets() {
     let packets = vec![
         NetworkPackage::Hello(b"My hello".as_slice().into()),
@@ -175,6 +212,8 @@ fn id_packets() {
             .expect("This comes from a valid package, and must thus be valid");
         let composed_again = compose_network_data(&parsed);
         assert_eq!(composed, composed_again);
+        let cloned = parsed.clone();
+        assert_eq!(parsed, cloned);
         // match parsed {
         //    Ok(package) if package == *pkg => (),
         //    others => assert!(false, "Invalid data from parser"),
