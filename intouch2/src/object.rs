@@ -336,12 +336,6 @@ impl NetworkPackageData<'_> {
     }
 }
 
-impl ToStatic for NetworkPackageData<'_> {
-    type Static = NetworkPackageData<'static>;
-    fn to_static(&self) -> Self::Static {
-        self.into()
-    }
-}
 impl ToStatic for NetworkPackage<'_> {
     type Static = NetworkPackage<'static>;
     fn to_static(&self) -> Self::Static {

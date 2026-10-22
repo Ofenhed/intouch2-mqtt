@@ -306,6 +306,17 @@ macro_rules! gen_packages {
       }
     }
 
+    impl<'a> $crate::ToStatic for $enum_name<'a> {
+        type Static = $enum_name<'static>;
+
+        fn to_static(&self) -> Self::Static {
+            match self {
+                $($enum_name::$const => $enum_name::$const,)*
+                $($enum_name::$arg(x) => $enum_name::$arg(x.to_static()),)*
+            }
+        }
+    }
+
     impl<'a> From<&$enum_name<'a>> for $enum_name<'static> {
         fn from(from: &$enum_name<'a>) -> Self {
             match from {
