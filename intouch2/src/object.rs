@@ -52,7 +52,7 @@ pub enum ReminderIndex {
 pub type ReminderData = i16;
 
 crate::gen_packages! {
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, PartialEq, Eq, Clone)]
     #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
     pub struct ReminderInfo {
         pub index: ReminderIndex,
@@ -62,7 +62,7 @@ crate::gen_packages! {
 }
 
 crate::gen_packages! {
-  #[derive(Copy, Debug, PartialEq, Eq)]
+  #[derive(Copy, Debug, PartialEq, Eq, Clone)]
   #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
   pub struct WatercareInfo {
       pub mode: u8,
@@ -341,11 +341,11 @@ impl ToStatic for NetworkPackage<'_> {
     fn to_static(self) -> Self::Static {
         match self {
             NetworkPackage::Addressed { src, dst, data } => NetworkPackage::Addressed {
-                src: src.map(ToStatic::to_static).map(Into::into),
-                dst: dst.map(ToStatic::to_static).map(Into::into),
+                src: src.map(ToStatic::to_static),
+                dst: dst.map(ToStatic::to_static),
                 data: data.to_static(),
             },
-            NetworkPackage::Hello(hello) => NetworkPackage::Hello(hello.to_static().into()),
+            NetworkPackage::Hello(hello) => NetworkPackage::Hello(hello.to_static()),
         }
     }
 }

@@ -27,7 +27,7 @@ macro_rules! gen_packages {
 
   // Finalize the result of BUILD_STRUCT_ARGS
   (FINISH_BUILD_STRUCT_ARGS $enum:ident $($struct_lifetime:lifetime)? $(#[$meta:meta])* $struct:ident { $($current:tt)* }) => {
-      #[derive(Debug, PartialEq, Eq)]
+      #[derive(Debug, PartialEq, Eq, Clone)]
       $(#[$meta])*
       #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
       pub struct $struct $(<$struct_lifetime>)? {
@@ -184,7 +184,7 @@ macro_rules! gen_packages {
 
       // Add trait implementations for structs with lifetime
       $crate::gen_packages!{ ENUMERATE_STRUCT_TO_STATIC $struct $($struct_life)? [ $($field)* ] }
-      $crate::gen_packages!{ ENUMERATE_STRUCT_CLONE $struct $($struct_life)? [ $($field)* ] }
+      //$crate::gen_packages!{ ENUMERATE_STRUCT_CLONE $struct $($struct_life)? [ $($field)* ] }
       $crate::gen_packages!{ ADD_FROM_ENUM_IMPL $($enum)? $struct { $(SAME $struct_life)? $(STATIC $trait_life)? } }
   };
 
@@ -267,8 +267,7 @@ macro_rules! gen_packages {
 
   // Implement simple package, only holding a single tag
   (WITH_TYPES_LIST $enum:ident [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] => $(#[$meta:meta])* $simple:ident ( $verb:literal : Simple ) $(,$($rest:tt)*)?) => {
-    #[derive(Default)]
-    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    #[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
     $(#[$meta])*
     #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
     pub struct $simple;

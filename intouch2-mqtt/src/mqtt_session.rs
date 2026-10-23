@@ -333,7 +333,7 @@ impl Session {
                                     })
                                     .collect();
                                 if !failed.is_empty() {
-                                    return Err(MqttError::MqttSubscribeFailed(failed))?;
+                                    return Err(MqttError::MqttSubscribeFailed(failed));
                                 } else {
                                     return Ok(());
                                 }
