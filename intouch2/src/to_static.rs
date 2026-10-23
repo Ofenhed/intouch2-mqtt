@@ -16,7 +16,8 @@ where
 
 impl<T: Clone + ToStatic> ClonedStatic for &T {
     fn cloned_static(self) -> <T as ToStatic>::Static {
-        self.clone().to_static()
+        let cloned = self.clone();
+        cloned.to_static()
     }
 }
 
