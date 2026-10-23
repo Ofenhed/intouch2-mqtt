@@ -601,6 +601,20 @@ impl PortForward {
                                         {
                                             debug!(parent: &span_dump_traffic, "Self <- {} ({} bytes, content {} bytes)", content.display(), std::mem::size_of_val(package), std::mem::size_of_val(content));
                                         }
+                                        if let NetworkPackageData::Status(
+                                            intouch2::object::package_data::Status {
+                                                data,
+                                                length,
+                                                ..
+                                            },
+                                        ) = content
+                                        {
+                                            debug!(
+                                                "Data is {} bytes long, expected is {length}",
+                                                data.len()
+                                            );
+                                            debug!("Data is {data:?}");
+                                        }
                                         let package = package.cloned_static();
                                         if let (
                                             Some(dump_pipe),
