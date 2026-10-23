@@ -7,7 +7,7 @@ WORKDIR /build/
 
 COPY ./ /build/
 
-RUN --mount=type=cache,target=./target cargo build --release --bin intouch2-mqtt && cp target/release/intouch2-mqtt /
+RUN --mount=type=cache,target=./target,id=${BUILD_ARCH}-builder cargo build --release --bin intouch2-mqtt && cp target/release/intouch2-mqtt /
 
 FROM ${BUILD_FROM}
 ARG BUILD_VERSION
