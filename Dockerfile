@@ -5,7 +5,6 @@ RUN rustup toolchain install nightly && rustup default nightly
 RUN mkdir /build/
 WORKDIR /build/
 
-COPY Cargo.lock Cargo.toml ./
 COPY ./ /build/
 
 RUN cargo build --release --bin intouch2-mqtt
