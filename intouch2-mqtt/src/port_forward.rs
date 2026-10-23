@@ -340,11 +340,19 @@ impl PortForward {
                             )
                         };
                         workers.spawn(async {
+                            let span_receive_from_client = tracing::trace_span!(
+                                "Forwarding package from client"
+                            );
+                            trace!(parent: &span_receive_from_client, "Clearing previous buf");
                             buf.clear();
+                            trace!(parent: &span_receive_from_client, "Receiving data");
                             let (len, source_addr) = recv_sock
                                 .recv_from(transmute_uninit(buf.spare_capacity_mut()))
                                 .await?;
+
+                            trace!(parent: &span_receive_from_client, "Setting buf length to {len}");
                             unsafe { buf.set_len(len) };
+                            trace!(parent: &span_receive_from_client, "Forwarding package");
                             Ok(SocketData::FromClient {
                                 recv_sock: Some(recv_sock),
                                 source_addr,
@@ -361,11 +369,17 @@ impl PortForward {
                             )
                         };
                         workers.spawn(async {
+                            let span_receive_from_spa =
+                                tracing::trace_span!("Forwarding package from spa");
+                            trace!(parent: &span_receive_from_spa, "Clearing previous buf");
                             buf.clear();
+                            trace!(parent: &span_receive_from_spa, "Receiving new data");
                             let len = recv_sock
                                 .recv(transmute_uninit(buf.spare_capacity_mut()))
                                 .await?;
+                            trace!(parent: &span_receive_from_spa, "Setting new length to {len}");
                             unsafe { buf.set_len(len) };
+                            trace!(parent: &span_receive_from_spa, "Forwarding");
                             Ok(SocketData::FromSpa {
                                 recv_sock: Some(recv_sock),
                                 data: buf,
