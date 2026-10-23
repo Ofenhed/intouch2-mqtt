@@ -1,6 +1,6 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.280"
+version: "0.1.281"
 slug: "intouch2-mqtt"
 init: false
 arch:
@@ -8,7 +8,7 @@ arch:
   - amd64
   - armv7
 stage: experimental
-image: ghcr.io/ofenhed/{arch}-intouch2-mqtt
+image: ghcr.io/ofenhed/intouch2-mqtt
 ports:
   10022/udp: 10022
 ports_description:
