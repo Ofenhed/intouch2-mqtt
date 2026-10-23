@@ -6,7 +6,7 @@ RUN rustup toolchain install nightly && rustup default nightly
 COPY . /build/
 WORKDIR /build/
 
-RUN --mount=type=cache,target=./target cargo build --release --bin intouch2-mqtt && cp target/release/intouch2-mqtt /
+RUN --mount=type=cache,target=./target,id=rust-target,sharing=locked cargo build --release --bin intouch2-mqtt && cp target/release/intouch2-mqtt /
 
 FROM ${BUILD_FROM}
 ARG BUILD_VERSION
