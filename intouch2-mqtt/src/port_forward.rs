@@ -599,7 +599,7 @@ impl PortForward {
                                                 NetworkPackageData::Ping | NetworkPackageData::Pong
                                             )
                                         {
-                                            debug!(parent: &span_dump_traffic, "Self <- {}", content.display());
+                                            debug!(parent: &span_dump_traffic, "Self <- {} ({} bytes, content {} bytes)", content.display(), std::mem::size_of_val(package), std::mem::size_of_val(content));
                                         }
                                         let package = package.cloned_static();
                                         if let (
