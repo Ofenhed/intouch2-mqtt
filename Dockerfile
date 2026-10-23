@@ -7,7 +7,7 @@ WORKDIR /build/
 
 COPY ./ /build/
 
-RUN --mount=type=cache,target=./target,id=${BUILD_ARCH}-builder cargo build --release --bin intouch2-mqtt && cp target/release/intouch2-mqtt /
+RUN --mount=type=cache,target=./target,id=builder cargo build --release --bin intouch2-mqtt && cp target/release/intouch2-mqtt /
 
 FROM ${BUILD_FROM}
 ARG BUILD_VERSION
@@ -17,7 +17,7 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 EXPOSE 10022/udp
 ENV RUST_BACKTRACE=1
 LABEL \
-  io.hass.version="${VERSION}" \
+  io.hass.version="${BUILD_VERSION}" \
   io.hass.type="addon" \
   io.hass.arch="${BUILD_ARCH}"
 
