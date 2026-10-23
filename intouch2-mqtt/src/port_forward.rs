@@ -610,7 +610,7 @@ impl PortForward {
                                         ) = content
                                         {
                                             debug!(
-                                                "Data is clamed to be {} bytes long, expected is {length}",
+                                                "Data is {} bytes long, expected is {length}",
                                                 data.len()
                                             );
                                             debug!("Data is {data:?}");
