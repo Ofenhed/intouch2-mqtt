@@ -599,7 +599,7 @@ impl PortForward {
                                                 NetworkPackageData::Ping | NetworkPackageData::Pong
                                             )
                                         {
-                                            debug!(parent: &span_dump_traffic, "Self <- {} ({} bytes, content {} bytes)", content.display(), std::mem::size_of_val(package), std::mem::size_of_val(content));
+                                            debug!(parent: &span_dump_traffic, "Self <- content ({} bytes, content {} bytes)", std::mem::size_of_val(package), std::mem::size_of_val(content));
                                         }
                                         if let NetworkPackageData::Status(
                                             intouch2::object::package_data::Status {
