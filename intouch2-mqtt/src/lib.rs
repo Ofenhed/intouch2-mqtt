@@ -78,9 +78,8 @@ impl<const COUNT: usize, T> Default for Buffers<COUNT, T> {
 
 impl<const COUNT: usize, T> Buffers<COUNT, T> {
     pub fn new() -> Self {
-        #[allow(deprecated)]
         Self {
-            bufs: unsafe { std::mem::uninitialized() },
+            bufs: [const { MaybeUninit::uninit() }; COUNT],
             size: 0,
         }
     }

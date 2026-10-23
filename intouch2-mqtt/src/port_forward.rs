@@ -136,7 +136,7 @@ pub struct PortForwardBuilder {
     pub dump_traffic: bool,
 }
 
-fn transmute_uninit<T>(arr: &mut [MaybeUninit<T>]) -> &mut [T] {
+fn transmute_uninit<T: Copy>(arr: &mut [MaybeUninit<T>]) -> &mut [T] {
     unsafe { std::mem::transmute(arr) }
 }
 
@@ -351,7 +351,7 @@ impl PortForward {
                                 .await?;
 
                             trace!(parent: &span_receive_from_client, "Setting buf length to {len}");
-                            unsafe { buf.set_len(len) };
+                            buf.resize(len, 0);
                             trace!(parent: &span_receive_from_client, "Forwarding package");
                             Ok(SocketData::FromClient {
                                 recv_sock: Some(recv_sock),
@@ -378,7 +378,7 @@ impl PortForward {
                                 .recv(transmute_uninit(buf.spare_capacity_mut()))
                                 .await?;
                             trace!(parent: &span_receive_from_spa, "Setting new length to {len}");
-                            unsafe { buf.set_len(len) };
+                            buf.resize(len, 0);
                             trace!(parent: &span_receive_from_spa, "Forwarding");
                             Ok(SocketData::FromSpa {
                                 recv_sock: Some(recv_sock),

@@ -56,17 +56,23 @@ unsafe fn transmute_lifetime<'b, T: ?Sized>(from: &T) -> &'b T {
     unsafe { std::mem::transmute(from) }
 }
 
-impl TryFrom<&'_ [u8]> for MqttPacket {
-    type Error = MqttError;
-
-    fn try_from(value: &'_ [u8]) -> Result<Self, Self::Error> {
-        let data: Pin<Box<[u8]>> = Box::into_pin(Box::from(value));
+impl MqttPacket {
+    fn try_from(value: impl Into<Box<[u8]>>) -> Result<Self, MqttError> {
+        let data: Pin<Box<[u8]>> = Box::into_pin(value.into());
         let box_ref: &'static [u8] = unsafe { transmute_lifetime(&data.as_ref()) };
         let packet = decode_slice(box_ref)?;
         let Some(packet) = packet else {
-            return Err(MqttError::NotEnoughData(value.into()))?;
+            return Err(MqttError::NotEnoughData(data))?;
         };
         Ok(MqttPacket { _buf: data, packet })
+    }
+}
+
+impl TryFrom<&'_ [u8]> for MqttPacket {
+    type Error = MqttError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        MqttPacket::try_from(value)
     }
 }
 
@@ -155,7 +161,7 @@ pub enum MqttError {
     #[error(transparent)]
     Encoding(#[from] mqttrs::Error),
     #[error("Not enough data received: {}", String::from_utf8_lossy(.0))]
-    NotEnoughData(Box<[u8]>),
+    NotEnoughData(Pin<Box<[u8]>>),
     #[error("Runtime error: {0}")]
     JoinError(#[from] tokio::task::JoinError),
     #[error("Unexpected packet type: {0:?}")]
@@ -537,7 +543,9 @@ impl SessionBuilder<'_> {
         stream.write_all(&buffer[..packet_len]).await?;
         let bytes_read = stream.read(buffer.as_mut()).await?;
         let Some(response) = decode_slice(&buffer[..bytes_read])? else {
-            return Err(MqttError::NotEnoughData(buffer[..bytes_read].into()))?;
+            return Err(MqttError::NotEnoughData(Box::into_pin(
+                buffer[..bytes_read].into(),
+            )))?;
         };
         if let Packet::Connack(ack) = response {
             match ack.code {
