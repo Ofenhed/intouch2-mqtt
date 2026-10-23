@@ -37,7 +37,7 @@ fn surrounded<'a>(
 
 fn parse_hello_package<'a>(input: &'a [u8]) -> IResult<&'a [u8], NetworkPackage<'a>> {
     let (input, hello) = surrounded(b"<HELLO>", b"</HELLO>")(input)?;
-    Ok((input, NetworkPackage::Hello(hello.into())))
+    Ok((input, NetworkPackage::Hello(Cow::Borrowed(hello))))
 }
 
 fn parse_datas(input: &'_ [u8]) -> IResult<&'_ [u8], NetworkPackageData<'_>> {

@@ -85,11 +85,8 @@ disjoint_impls! {
 
   impl<'a, A: SimpleDatasContent + DatasType<Group=Simple>> DatasContent<'a> for A {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
-      if input == Self::VERB {
-          Ok((&input[input.len()..], Default::default()))
-      } else {
-          Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::OneOf)))
-      }
+      let (input, _) = nom::bytes::complete::tag(Self::VERB)(input)?;
+      Ok((input, Default::default()))
     }
 
     fn compose(&self) -> Cow<'_, [u8]> {
@@ -97,7 +94,7 @@ disjoint_impls! {
     }
   }
 
-  impl<'a, A: TransmutedArray + Clone + DatasType<Group=Transmuted> + 'a> DatasContent<'a> for A where [(); <A as TransmutedArray>::SIZE]: {
+  impl<'a, A: TransmutedArray + Copy + DatasType<Group=Transmuted> + 'a> DatasContent<'a> for A where [(); <A as TransmutedArray>::SIZE]: {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         A::parse_bytes(input).map(|(input, this)| (input, this.to_owned()))
     }

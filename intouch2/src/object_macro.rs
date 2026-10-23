@@ -303,7 +303,11 @@ macro_rules! gen_packages {
     impl<'a> $enum_name<'a> {
       pub fn parse_inner<I: DatasContent<'a> + Into<Self>>(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         let (input, parsed) = I :: parse(input)?;
-        Ok((input, parsed.into()))
+        if input.is_empty() {
+            Ok((input, parsed.into()))
+        } else {
+            Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::NonEmpty)))
+        }
       }
       pub fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         $crate::gen_packages!( PARSER_CONTENT $($const)* $($arg)* )(input)

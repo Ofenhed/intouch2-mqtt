@@ -1,6 +1,7 @@
+use core::fmt::Debug;
 use std::borrow::Cow;
 
-use crate::ToStatic as _;
+use crate::{ToStatic as _, parser};
 
 use super::{composer::*, object::*, parser::*};
 
@@ -13,27 +14,34 @@ fn parse_hello() {
 }
 
 #[test]
-fn parse_new_ping() {
-    assert!(matches!(
-    NetworkPackageData::parse(b"APING"),
-    Ok(package) if package == (&[], NetworkPackageData::Ping),
-    ));
-    assert!(matches!(
-    NetworkPackageData::parse(b"APING\0"),
-    Ok(package) if package == (&[], NetworkPackageData::Pong),
-    ));
-    assert!(matches!(
-    NetworkPackageData::parse(b"WCERR"),
-    Ok(package) if package == (&[], NetworkPackageData::WatercareError),
-    ));
-    assert!(matches!(
-    NetworkPackageData::parse(b"PUNG"),
-    Ok(package) if package == (&[], package_data::Unknown(Cow::Borrowed(b"PUNG")).into())
-    ));
+fn parse_new_ping() -> Result<(), parser::ParseError> {
+    fn to_err(e: nom::Err<nom::error::Error<&[u8]>>) -> parser::ParseError {
+        ParseError::from(e.to_owned())
+    }
+    assert_eq!(
+        NetworkPackageData::parse(b"APING").map_err(to_err)?,
+        (&[][..], NetworkPackageData::Ping),
+    );
+    assert_eq!(
+        NetworkPackageData::parse(b"APING\0").map_err(to_err)?,
+        (&[][..], NetworkPackageData::Pong),
+    );
+    assert_eq!(
+        NetworkPackageData::parse(b"WCERR").map_err(to_err)?,
+        (&[][..], NetworkPackageData::WatercareError),
+    );
+    assert_eq!(
+        NetworkPackageData::parse(b"PUNG").map_err(to_err)?,
+        (
+            &[][..],
+            package_data::Unknown(Cow::Borrowed(b"PUNG")).into()
+        )
+    );
+    Ok(())
 }
 
 #[test]
-fn parse_ping_and_pong() {
+fn parse_ping_and_pong() -> Result<(), parser::ParseError> {
     let data = b"<PACKT><SRCCN>sender-id</SRCCN><DATAS>APING</DATAS></PACKT>";
     let expected = NetworkPackage::Addressed {
         src: Some(b"sender-id".as_slice().into()),
@@ -41,20 +49,17 @@ fn parse_ping_and_pong() {
         data: package_data::Ping.into(),
     };
     assert_eq!(data, compose_network_data(&expected).as_ref());
-    assert!(matches!(
-        parse_network_data(data),
-    Ok(package) if package == expected
-    ));
-    assert!(matches!(
-        parse_network_data(
+    assert_eq!(parse_network_data(data)?, expected);
+    assert_eq!(parse_network_data(
           b"<PACKT><SRCCN>sender-id</SRCCN><DESCN>receiver-id</DESCN><DATAS>APING\0</DATAS></PACKT>"
-        ),
-    Ok(package) if package == NetworkPackage::Addressed {
+        )?,
+    NetworkPackage::Addressed {
         src: Some(b"sender-id".as_slice().into()),
         dst: Some(b"receiver-id".as_slice().into()),
         data: package_data::Pong.into()
       }
-    ));
+    );
+    Ok(())
 }
 
 #[test]
@@ -176,13 +181,18 @@ fn status_update() {
 }
 
 #[test]
-fn id_packets() {
+fn id_packets() -> Result<(), parser::ParseError> {
     let packets = vec![
         NetworkPackage::Hello(b"My hello".as_slice().into()),
         NetworkPackage::Addressed {
             src: Some(b"some-src".as_slice().into()),
             dst: None,
             data: package_data::Ping.into(),
+        },
+        NetworkPackage::Addressed {
+            src: Some(b"some-src".as_slice().into()),
+            dst: Some(b"some-dest".as_slice().into()),
+            data: package_data::Pong.into(),
         },
         NetworkPackage::Addressed {
             src: Some(b"some-src".as_slice().into()),
@@ -215,8 +225,7 @@ fn id_packets() {
     ];
     for pkg in packets.iter() {
         let composed = compose_network_data(&pkg);
-        let parsed = parse_network_data(&composed)
-            .expect("This comes from a valid package, and must thus be valid");
+        let parsed = parse_network_data(&composed)?;
         let composed_again = compose_network_data(&parsed);
         assert_eq!(composed, composed_again);
         let cloned = parsed.clone();
@@ -226,4 +235,5 @@ fn id_packets() {
         //    others => assert!(false, "Invalid data from parser"),
         //}
     }
+    Ok(())
 }
