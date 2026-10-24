@@ -522,18 +522,11 @@ impl PortForward {
                             workers.spawn(async move {
                                 send_spa.lock().await.send(&data).await?;
                                 if let Some((send_pipe, content)) = send_pipe {
-                                    if tracing::enabled!(tracing::Level::TRACE) {
-                                        trace!(
-                                            parent: &span_port_forward,
-                                            "Forwarding set command {package}",
-                                            package = tracing::field::display(&content)
-                                        );
-                                    } else {
-                                        info!(
-                                            parent: &span_port_forward,
-                                            "Forwarding set command"
-                                        );
-                                    }
+                                    trace!(
+                                        parent: &span_port_forward,
+                                        "Forwarding set command {package}",
+                                        package = tracing::field::display(&content)
+                                    );
                                     send_pipe.send(content)?;
                                 }
                                 Ok(SocketData::SendCompleted { buf: Some(data) })
@@ -565,7 +558,7 @@ impl PortForward {
                                 .get_addr(&ForwardAddr::Socket(source_addr))
                                 .is_none()
                             {
-                                info!(parent: &span_port_forward, "New hello received from {source_addr}")
+                                debug!(parent: &span_port_forward, "New hello received from {source_addr}")
                             }
                             let send_clients = send_clients.clone();
                             let hello_response = hello_response.clone();
