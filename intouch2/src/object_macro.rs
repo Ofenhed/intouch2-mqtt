@@ -301,7 +301,7 @@ macro_rules! gen_packages {
       $($arg($arg$(<$life>)?),)*
     }
     impl<'a> $enum_name<'a> {
-      pub fn parse_inner<I: DatasContent<'a> + Into<Self>>(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
+      fn parse_inner<I: DatasContent<'a> + Into<Self>>(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         let (input, parsed) = I :: parse(input)?;
         if input.is_empty() {
             Ok((input, parsed.into()))
@@ -309,11 +309,12 @@ macro_rules! gen_packages {
             Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::NonEmpty)))
         }
       }
-      pub fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
+    }
+    impl<'a> DatasContent<'a> for $enum_name<'a> {
+      fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         $crate::gen_packages!( PARSER_CONTENT $($const)* $($arg)* )(input)
       }
-      #[allow(dead_code)]
-      pub fn compose(&self) -> std::borrow::Cow<'_, [u8]> {
+      fn compose(&self) -> std::borrow::Cow<'_, [u8]> {
           match self {
               $($enum_name::$const => $const.compose(),)*
               $($enum_name::$arg(x) => x.compose(),)*

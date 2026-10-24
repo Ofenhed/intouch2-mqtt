@@ -326,12 +326,13 @@ pub mod package_data {
 }
 
 impl NetworkPackageData<'_> {
+    #[must_use]
     pub fn display(&self) -> String {
         match self {
             NetworkPackageData::Unknown(data) => {
                 format!("Unknown: {}", String::from_utf8_lossy(data))
             }
-            x => format!("{:?}", x),
+            x => format!("{x:?}"),
         }
     }
 }
@@ -367,11 +368,9 @@ impl std::fmt::Display for NetworkPackage<'_> {
             NetworkPackage::Addressed { src, dst, data } => f.write_fmt(format_args!(
                 "Addressed({}, {}, {})",
                 src.as_ref()
-                    .map(|x| String::from_utf8_lossy(x))
-                    .unwrap_or("NULL".into()),
+                    .map_or(Cow::Borrowed("NULL"), |x| String::from_utf8_lossy(x)),
                 dst.as_ref()
-                    .map(|x| String::from_utf8_lossy(x))
-                    .unwrap_or("NULL".into()),
+                    .map_or(Cow::Borrowed("NULL"), |x| String::from_utf8_lossy(x)),
                 data.display()
             )),
             NetworkPackage::Hello(msg) => {

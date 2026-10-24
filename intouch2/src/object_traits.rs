@@ -29,7 +29,7 @@ pub trait SimpleDatasContent:
 
 pub trait TransmutedArray
 where
-    Self: Sized,
+    Self: Sized + Copy,
 {
     const SIZE: usize = std::mem::size_of::<Self>();
 
@@ -121,7 +121,7 @@ disjoint_impls! {
     const VERB: &'static [u8];
   }
 
-  impl<'a, A: SimpleDatasContent + DatasType<Group=Simple>> TaggedDatasContent<'a> for A {
+  impl<A: SimpleDatasContent + DatasType<Group=Simple>> TaggedDatasContent<'_> for A {
     const VERB: &'static [u8] = A::VERB;
   }
 

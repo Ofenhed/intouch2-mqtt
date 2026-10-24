@@ -11,14 +11,17 @@ pub struct GeckoDatas {
 }
 
 impl GeckoDatas {
+    #[must_use]
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
+    #[must_use]
     pub fn peek_dirty(&self) -> Option<&Range<usize>> {
         self.dirty.front()
     }
@@ -29,6 +32,7 @@ impl GeckoDatas {
 }
 
 impl GeckoDatas {
+    #[must_use]
     pub fn new(area_size: usize) -> Self {
         Self {
             data: vec![0; area_size].into(),
@@ -81,7 +85,7 @@ where
     fn index_mut(&mut self, index: Idx) -> &mut Self::Output {
         let start = self.data.as_ptr();
         let slice = self.data.index_mut(index);
-        let slice_addr = addr_of!(*slice) as *const u8;
+        let slice_addr = addr_of!(*slice).cast::<u8>();
         let index = slice_addr as usize - start as usize;
         let len = slice.slice_len();
         let range = Range {

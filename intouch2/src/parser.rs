@@ -4,7 +4,11 @@ use crate::ToStatic as _;
 
 use super::object::*;
 
-use nom::{bytes::complete::*, combinator::opt, *};
+use nom::{
+    bytes::complete::{tag, take_until},
+    combinator::opt,
+    *,
+};
 
 use std::borrow::Cow;
 
@@ -35,12 +39,12 @@ fn surrounded<'a>(
     }
 }
 
-fn parse_hello_package<'a>(input: &'a [u8]) -> IResult<&'a [u8], NetworkPackage<'a>> {
+fn parse_hello_package(input: &[u8]) -> IResult<&[u8], NetworkPackage<'_>> {
     let (input, hello) = surrounded(b"<HELLO>", b"</HELLO>")(input)?;
     Ok((input, NetworkPackage::Hello(Cow::Borrowed(hello))))
 }
 
-fn parse_datas(input: &'_ [u8]) -> IResult<&'_ [u8], NetworkPackageData<'_>> {
+fn parse_datas(input: &[u8]) -> IResult<&[u8], NetworkPackageData<'_>> {
     let (input, datas) = surrounded(b"<DATAS>", b"</DATAS>")(input)?;
     let ([], data) = NetworkPackageData::parse(datas)? else {
         return Err(nom::Err::Error(nom::error::Error::new(
@@ -51,7 +55,7 @@ fn parse_datas(input: &'_ [u8]) -> IResult<&'_ [u8], NetworkPackageData<'_>> {
     Ok((input, data))
 }
 
-fn parse_addressed_package<'a>(input: &'a [u8]) -> IResult<&'a [u8], NetworkPackage<'a>> {
+fn parse_addressed_package(input: &[u8]) -> IResult<&[u8], NetworkPackage<'_>> {
     let (input, ((src, dst), datas)) = surrounded(b"<PACKT>", b"</PACKT>")
         .and_then(
             opt(surrounded(b"<SRCCN>", b"</SRCCN>"))
@@ -62,8 +66,8 @@ fn parse_addressed_package<'a>(input: &'a [u8]) -> IResult<&'a [u8], NetworkPack
     Ok((
         input,
         NetworkPackage::Addressed {
-            src: src.map(|x| x.into()),
-            dst: dst.map(|x| x.into()),
+            src: src.map(Cow::Borrowed),
+            dst: dst.map(Cow::Borrowed),
             data: datas,
         },
     ))
@@ -195,7 +199,7 @@ where
     }
 }
 
-pub fn parse_network_data<'a>(input: &'a [u8]) -> Result<NetworkPackage<'a>, ParseError> {
+pub fn parse_network_data(input: &[u8]) -> Result<NetworkPackage<'_>, ParseError> {
     match parse_hello_package
         .or(parse_addressed_package)
         .parse(input)

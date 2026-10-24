@@ -1,9 +1,8 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 #![recursion_limit = "512"]
-use std::borrow::Cow;
 
-use rand::*;
+use rand::Rng as _;
 
 pub mod composer;
 pub mod datas;
@@ -14,13 +13,7 @@ pub mod parser;
 mod to_static;
 pub use to_static::*;
 
-pub fn static_cow<T>(from: impl AsRef<[T]>) -> Cow<'static, [T]>
-where
-    [T]: ToOwned,
-{
-    Cow::Owned(from.as_ref().to_owned())
-}
-
+#[must_use]
 pub fn generate_uuid() -> Box<[u8]> {
     let mut rng = rand::thread_rng();
     let characters = b"0123456789abcdef".to_vec();

@@ -21,7 +21,7 @@ impl<T: Clone + ToStatic> ClonedStatic for &T {
     }
 }
 
-impl<'a, T: ToOwned + ?Sized> ToStatic for Cow<'a, T>
+impl<T: ToOwned + ?Sized> ToStatic for Cow<'_, T>
 where
     <T as ToOwned>::Owned: ToStatic,
 {
