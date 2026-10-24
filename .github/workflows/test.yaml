@@ -11,7 +11,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-    continue-on-errors: true
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v2
 
