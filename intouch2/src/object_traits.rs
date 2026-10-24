@@ -1,5 +1,5 @@
 use disjoint_impls::disjoint_impls;
-use std::{borrow::Cow, ops::Deref};
+use std::{borrow::Cow, iter, ops::Deref};
 
 pub mod dispatch {
     pub trait DatasType {
@@ -75,47 +75,71 @@ pub trait TailingDatasContent<'a>:
     fn into(&self) -> &[u8];
 }
 
-use dispatch::*;
-disjoint_impls! {
-  pub trait DatasContent<'a>: Sized {
+pub trait DatasContent<'a>: Sized {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self>;
 
-    fn compose(&self) -> Cow<'_, [u8]>;
+    fn compose(&self) -> impl Iterator<Item = Cow<'_, [u8]>>;
+}
+
+use dispatch::*;
+disjoint_impls! {
+  trait DatasContentInter<'a>: Sized {
+    type Inter<'b>: Iterator<Item = Cow<'b, [u8]>> where Self: 'b;
+
+    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self>;
+
+    fn compose(&self) -> Self::Inter<'_>;
   }
 
-  impl<'a, A: SimpleDatasContent + DatasType<Group=Simple>> DatasContent<'a> for A {
+  impl<'a, A: SimpleDatasContent + DatasType<Group=Simple>> DatasContentInter<'a> for A {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
       let (input, _) = nom::bytes::complete::tag(Self::VERB)(input)?;
       Ok((input, Default::default()))
     }
 
-    fn compose(&self) -> Cow<'_, [u8]> {
-      Cow::Borrowed(Self::VERB)
+    type Inter<'b> = iter::Once<Cow<'b, [u8]>>;
+
+    fn compose(&self) -> Self::Inter<'_> {
+        iter::once(Cow::Borrowed(Self::VERB))
     }
   }
 
-  impl<'a, A: TransmutedArray + Copy + DatasType<Group=Transmuted> + 'a> DatasContent<'a> for A where [(); <A as TransmutedArray>::SIZE]: {
+  impl<'a, A: TransmutedArray + Copy + DatasType<Group=Transmuted> + 'a> DatasContentInter<'a> for A where [(); <A as TransmutedArray>::SIZE]: {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         A::parse_bytes(input).map(|(input, this)| (input, this.to_owned()))
     }
 
-    fn compose(&self) -> Cow<'_, [u8]> {
-      Cow::Owned(self.to_bytes_soft().into())
+    type Inter<'b> = iter::Once<Cow<'b, [u8]>> where A: 'b;
+
+    fn compose(&self) -> Self::Inter<'_> {
+        iter::once(Cow::Borrowed(self.to_bytes_soft()))
     }
   }
 
-  impl<'a, A: TailingDatasContent<'a> + DatasType<Group=Tailing>> DatasContent<'a> for A {
+  impl<'a, A: TailingDatasContent<'a> + DatasType<Group=Tailing>> DatasContentInter<'a> for A {
     fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
       let (input, _) = nom::bytes::complete::tag(Self::VERB)(input)?;
       Ok((&input[input.len()..], A::from(input)))
     }
 
-    fn compose(&self) -> Cow<'_, [u8]> {
-      let parts: &[&[u8]] = &[Self::VERB, A::into(self)];
-      Cow::Owned(parts.concat())
+    type Inter<'b> = std::array::IntoIter<Cow<'b, [u8]>, 2> where A: 'b;
+
+    fn compose(&self) -> Self::Inter<'_> {
+      [Cow::Borrowed(Self::VERB), Cow::Borrowed(A::into(self))].into_iter()
     }
   }
 }
+
+impl<'a, T: DatasContentInter<'a>> DatasContent<'a> for T {
+    fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
+        <Self as DatasContentInter>::parse(input)
+    }
+
+    fn compose(&self) -> impl Iterator<Item = Cow<'_, [u8]>> {
+        <Self as DatasContentInter>::compose(self)
+    }
+}
+
 disjoint_impls! {
   pub trait TaggedDatasContent<'a>: DatasContent<'a> {
     const VERB: &'static [u8];

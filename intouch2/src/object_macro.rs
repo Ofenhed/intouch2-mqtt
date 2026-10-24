@@ -53,7 +53,7 @@ macro_rules! gen_packages {
           'a $struct $tag
           [ $($member)* $field ]
           [ $($parser)* ($field: &'a $field_type) ]
-          [ $($composer)* (.$field.compose()) ]
+          [ $($composer)* (.$field) ]
           { $($saved)* }
           => $($($rest)*)?
       }
@@ -65,7 +65,7 @@ macro_rules! gen_packages {
           $($li)? $struct $tag
           [ $($member)* $field ]
           [ $($parser)* ($field: $field_type) ]
-          [ $($composer)* (.$field.compose()) ]
+          [ $($composer)* (.$field) ]
           { $($saved)* }
           => $($($rest)*)?
       }
@@ -143,11 +143,11 @@ macro_rules! gen_packages {
     $( { SAME $struct_life:lifetime } )?
     $( { STATIC $trait_life:lifetime } )?
     $struct:ident $tag:literal
-    [$($field:ident)*]
+    [$( $field:ident )*]
     [ $( ( $var:ident $(, $($parser:tt)* )? $(: $var_type:ty )? ) )* ]
     [ $( (
-        $($static:literal)?
-        $($(.$member:ident)+ $( ( $($args:tt)* ) )? )?
+        $( $static:literal )?
+        $( $(.$member:ident)+ )?
     ) )* ]
     // Saved
     { $($enum:ident)? [$($const:ident)*] [$($($life:lifetime)? $arg:ident)*] $($rest:tt)* } ) => {
@@ -169,16 +169,15 @@ macro_rules! gen_packages {
             Ok((input, Self { $($field: $field.into(),)* }))
         }
 
-        fn compose(&self) -> std::borrow::Cow<'_, [u8]> {
-            let mut output = vec![];
+        fn compose(&self) -> impl Iterator<Item = std::borrow::Cow<'_, [u8]>> {
+            let iter = core::iter::empty();
             $(
-                $(output.extend_from_slice($static);)?
-                $({
-                    let from_self = &self$(.$member)+ $(( $($args)* ))?;
-                    output.extend_from_slice(AsRef::<[u8]>::as_ref(from_self));
-                })?
+                $(let iter = core::iter::chain(iter, core::iter::once(Cow::Borrowed(&$static[..])));)?
+                $(
+                   let iter = core::iter::chain(iter, $crate::object::DatasContent::compose(&self$(.$member)+));
+                )?
             )*
-            output.into()
+            iter
         }
       }
 
@@ -314,10 +313,10 @@ macro_rules! gen_packages {
       fn parse(input: &'a [u8]) -> nom::IResult<&'a [u8], Self> {
         $crate::gen_packages!( PARSER_CONTENT $($const)* $($arg)* )(input)
       }
-      fn compose(&self) -> std::borrow::Cow<'_, [u8]> {
+      fn compose(&self) -> impl Iterator<Item = std::borrow::Cow<'_, [u8]>> {
           match self {
-              $($enum_name::$const => $const.compose(),)*
-              $($enum_name::$arg(x) => x.compose(),)*
+              $($enum_name::$const => Box::new($const.compose()) as Box<dyn Iterator<Item = _>>,)*
+              $($enum_name::$arg(x) => Box::new(x.compose()) as Box<dyn Iterator<Item = _>>,)*
           }
       }
     }

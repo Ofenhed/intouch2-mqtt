@@ -48,7 +48,7 @@ fn parse_ping_and_pong() -> Result<(), parser::ParseError> {
         dst: None,
         data: package_data::Ping.into(),
     };
-    assert_eq!(data, compose_network_data(&expected).as_ref());
+    assert_eq!(&data[..], &compose_network_data(&expected));
     assert_eq!(parse_network_data(data)?, expected);
     assert_eq!(parse_network_data(
           b"<PACKT><SRCCN>sender-id</SRCCN><DESCN>receiver-id</DESCN><DATAS>APING\0</DATAS></PACKT>"
@@ -110,9 +110,12 @@ fn parse_reminders() {
     ];
     let mut raw_data = b"RMREQ".to_vec();
     raw_data.append(&mut valid_payload.to_vec());
-    let parse_fail = match NetworkPackageData::parse(&raw_data) {
+    let parse_fail = match NetworkPackageData::parse(&raw_data[..]) {
         Ok(([], NetworkPackageData::Reminders(reminders))) => {
-            assert_eq!(&raw_data[..], &reminders.compose()[..]);
+            assert_eq!(
+                &raw_data[..],
+                &reminders.compose().collect::<Vec<_>>().concat()
+            );
             None
         }
         x => Some(x),
@@ -128,9 +131,9 @@ fn parse_watercare() {
     ];
     let mut raw_data = b"WCREQ".to_vec();
     raw_data.append(&mut valid_payload.to_vec());
-    let parse_fail = match NetworkPackageData::parse(&raw_data) {
+    let parse_fail = match NetworkPackageData::parse(&raw_data[..]) {
         Ok(([], NetworkPackageData::WatercareRequest(req))) => {
-            assert_eq!(&raw_data[..], &req.compose()[..]);
+            assert_eq!(&raw_data[..], &req.compose().collect::<Vec<_>>().concat());
             None
         }
         x => Some(x),
@@ -142,13 +145,13 @@ fn parse_watercare() {
 fn status_update() {
     let inner_data = (0..39).collect::<Vec<u8>>();
     fn parse_data(inner: &[u8]) -> NetworkPackageData<'static> {
-        let data = [
+        let data: Vec<u8> = [
             &b"<PACKT><SRCCN>SPA1</SRCCN><DESCN>DEV1</DESCN><DATAS>STATV\x00\x01\x27"[..],
             &inner[..],
             &b"</DATAS></PACKT>"[..],
         ]
         .concat();
-        let data = parse_network_data(&data);
+        let data = parse_network_data(&data[..]);
         println!("{data:?}");
         let Ok(NetworkPackage::Addressed {
             data: status_package,
@@ -225,7 +228,7 @@ fn id_packets() -> Result<(), parser::ParseError> {
     ];
     for pkg in packets.iter() {
         let composed = compose_network_data(&pkg);
-        let parsed = parse_network_data(&composed)?;
+        let parsed = parse_network_data(&composed[..])?;
         let composed_again = compose_network_data(&parsed);
         assert_eq!(composed, composed_again);
         let cloned = parsed.clone();

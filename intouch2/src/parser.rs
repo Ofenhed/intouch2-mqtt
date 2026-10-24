@@ -78,8 +78,8 @@ impl<'a> DatasContent<'a> for u16 {
         nom::number::complete::be_u16(input)
     }
 
-    fn compose(&self) -> Cow<'_, [u8]> {
-        Cow::Owned(self.to_be_bytes().into())
+    fn compose(&self) -> impl Iterator<Item = Cow<'_, [u8]>> {
+        std::iter::once(Cow::Owned(self.to_be_bytes().to_vec()))
     }
 }
 
@@ -88,8 +88,8 @@ impl<'a> DatasContent<'a> for i16 {
         nom::number::complete::le_i16(input)
     }
 
-    fn compose(&self) -> Cow<'_, [u8]> {
-        Cow::Owned(self.to_le_bytes().into())
+    fn compose(&self) -> impl Iterator<Item = Cow<'_, [u8]>> {
+        std::iter::once(Cow::Owned(self.to_le_bytes().to_vec()))
     }
 }
 
@@ -100,8 +100,8 @@ impl<'a, T1: DatasContent<'a>, T2: DatasContent<'a>> DatasContent<'a> for (T1, T
         Ok((input, (t1, t2)))
     }
 
-    fn compose(&self) -> Cow<'_, [u8]> {
-        Cow::Owned([self.0.compose(), self.1.compose()].concat())
+    fn compose(&self) -> impl Iterator<Item = Cow<'_, [u8]>> {
+        self.0.compose().chain(self.1.compose())
     }
 }
 
@@ -110,8 +110,8 @@ impl<'a> DatasContent<'a> for &'a [u8] {
         Ok((&[], input))
     }
 
-    fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Borrowed(self)
+    fn compose(&self) -> impl Iterator<Item = Cow<'_, [u8]>> {
+        std::iter::once(Cow::Borrowed(*self))
     }
 }
 
@@ -125,7 +125,7 @@ impl<'a, T: DatasContent<'a> + Clone> DatasContent<'a> for Cow<'a, T> {
         Ok((input, Cow::Owned(parsed)))
     }
 
-    fn compose(&self) -> Cow<'_, [u8]> {
+    fn compose(&self) -> impl Iterator<Item = Cow<'_, [u8]>> {
         T::compose(self)
     }
 }
@@ -169,8 +169,12 @@ impl<'a> DatasContent<'a> for StatusChange<'a> {
         Ok((input, Self { change, data }))
     }
 
-    fn compose(&self) -> Cow<'a, [u8]> {
-        Cow::Owned([self.change.to_be_bytes().as_ref(), self.data.as_ref()][..].concat())
+    fn compose(&self) -> impl Iterator<Item = Cow<'_, [u8]>> {
+        [
+            Cow::Owned(self.change.to_be_bytes().to_vec()),
+            Cow::Borrowed(&self.data[..]),
+        ]
+        .into_iter()
     }
 }
 
@@ -190,12 +194,8 @@ where
         }
     }
 
-    fn compose(&self) -> Cow<'a, [u8]> {
-        let mut result = vec![];
-        for element in self.as_ref() {
-            result.push(element.compose().into_owned());
-        }
-        Cow::Owned(result.concat())
+    fn compose(&self) -> impl Iterator<Item = Cow<'_, [u8]>> {
+        self.iter().flat_map(DatasContent::compose)
     }
 }
 
