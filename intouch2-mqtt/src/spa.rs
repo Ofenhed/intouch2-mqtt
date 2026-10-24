@@ -613,11 +613,13 @@ impl SpaConnection {
                                             ))?;
                                         }
                                         let end = data_read + data.len();
+                                        let data_range = data_read..end;
                                         let _span_add_data = tracing::trace_span!(
-                                            "add initial gecko data to [{data_read}..{end}]"
+                                            "Add initial gecko data",
+                                            range = ?data_range
                                         );
                                         let mut gecko_data = gecko_data.lock().await;
-                                        gecko_data[data_read..end].copy_from_slice(&data);
+                                        gecko_data[data_range].copy_from_slice(&data);
                                         if end == usize::from(gecko_data_len) {
                                             notify_dirty.notify_waiters();
                                             break 'retry;
