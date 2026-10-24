@@ -351,7 +351,7 @@ impl PortForward {
                                 .await?;
 
                             trace!(parent: &span_receive_from_client, "Setting buf length to {len}");
-                            buf.resize(len, 0);
+                            unsafe { buf.set_len(len) };
                             trace!(parent: &span_receive_from_client, "Forwarding package");
                             Ok(SocketData::FromClient {
                                 recv_sock: Some(recv_sock),
@@ -378,7 +378,9 @@ impl PortForward {
                                 .recv(transmute_uninit(buf.spare_capacity_mut()))
                                 .await?;
                             trace!(parent: &span_receive_from_spa, "Setting new length to {len}");
-                            buf.resize(len, 0);
+                            unsafe {
+                                buf.set_len(len);
+                            }
                             trace!(parent: &span_receive_from_spa, "Forwarding");
                             Ok(SocketData::FromSpa {
                                 recv_sock: Some(recv_sock),
