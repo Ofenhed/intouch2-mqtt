@@ -1,5 +1,5 @@
 ARG BUILD_ARCH
-ARG BUILD_FROM=ghcr.io/home-assistant/base-ubuntu:latest
+ARG BUILD_FROM=ghcr.io/home-assistant/${BUILD_ARCH}-base-ubuntu:latest
 FROM rust:latest AS builder
 RUN rustup toolchain install nightly && rustup default nightly
 
