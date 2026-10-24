@@ -1,12 +1,11 @@
 name: "Intouch2-MQTT"
 description: "A bridge between intouch2, used in spa systems, and MQTT 3.3"
-version: "0.1.306"
+version: "0.1.307"
 slug: "intouch2-mqtt"
 init: false
 arch:
   - aarch64
   - amd64
-  - armv7
 stage: experimental
 image: ghcr.io/ofenhed/intouch2-mqtt
 ports:
@@ -14,8 +13,6 @@ ports:
 services:
   - "mqtt:need"
 hassio_api: true
-homeassistant_api: true
-advanced: true
 schema:
   spa_target: str
   spa_id: str
