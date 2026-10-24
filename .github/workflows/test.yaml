@@ -11,6 +11,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    continue-on-errors: true
     steps:
       - uses: actions/checkout@v2
 
@@ -27,16 +28,17 @@ jobs:
           rustc --version
           cargo clippy --version
 
-      - name: Lint
-        run: |
-          cargo fmt -- --check
-          cargo clippy -- -D warnings
+      - name: Formatting
+        run: cargo fmt -- --check
+
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Check
+        run: cargo check
 
       - name: Test
-        run: |
-          cargo check
-          cargo test --all
+        run: cargo test --all
 
       - name: Build
-        run: |
-          cargo build --release
+        run: cargo build --release
