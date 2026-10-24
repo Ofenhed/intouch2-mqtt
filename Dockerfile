@@ -12,8 +12,6 @@ FROM ${BUILD_FROM}
 ARG BUILD_VERSION
 ARG BUILD_ARCH
 EXPOSE 10022/udp
-RUN useradd --user-group intouch2-service
-USER intouch2-service
 LABEL \
   io.hass.version="${BUILD_VERSION}" \
   io.hass.type="addon" \
