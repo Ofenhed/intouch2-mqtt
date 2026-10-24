@@ -1,5 +1,5 @@
 configuration:
-  spa_target: str
+  spa_target:
     name: "Spa Target"
     description: "The IP and port used to connect to the spa."
   spa_id:
