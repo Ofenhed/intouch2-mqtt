@@ -1,0 +1,52 @@
+configuration:
+  spa_target: str
+    name: "Spa Target"
+    description: "The IP and port used to connect to the spa."
+  spa_id:
+    name: "Spa unique device identifier"
+    description: "This is used to make sure that all entities are bound to the correct device."
+  spa_memory_size:
+    name: "Spa memory size"
+    description: "The memory size of your spa. This can be found by wiretapping your spa app. This is required for anything else than wiretapping."
+  spa_udp_timeout:
+    name: "UDP timeout"
+    description: "Timeout in seconds before the spa is considered unaccessible after initial contact."
+  spa_handshake_timeout:
+    name: "Handshake timeout"
+    description: "Timeout in seconds to wait for the spa to reply to the initial Hello message."
+  spa_forward_listen_ip:
+    name: "Proxy local IP"
+    description: "Forward traffic from a local IP (on port 10022) to the spa. This can be used to figure out spa_memory_size, or for general debugging."
+  log_level:
+    name: "Log level"
+  dump_traffic:
+    name: "Dump traffic in the log"
+    description: "This is unrelated to the dump MQTT topic."
+  memory_changes_mqtt_topic:
+    name: "MQTT memory change topic"
+    description: "This will be posted to `<MQTT base topic>/<MQTT memory change topic>`."
+  package_dump_mqtt_topic:
+    name: "MQTT package dump topic"
+    description: "This will be posted to `<MQTT base topic>/<MQTT package dump topic>/<Package Type>`."
+  mqtt_target:
+    name: "MQTT Server"
+  mqtt_username:
+    name: "MQTT username"
+  mqtt_password:
+    name: "MQTT password"
+  mqtt_base_topic:
+    name: "MQTT base topic"
+    description: "Note that this is not prepended to topics defined in the Entity definitions."
+  mqtt_discovery_topic:
+    name: "MQTT discovery topic"
+    description: "The MQTT topic where states will be reported to. It is assumed that Home Assistant listens to this topic."
+  mqtt_availability_topic:
+    name: "MQTT availability topic"
+    description: "The availability state for the spa will be reported to `<MQTT base topic>/<MQTT availability topic>`."
+  mqtt_home_assistant_status_topic:
+    name: "MQTT Home Assistant status topic"
+    description: "MQTT state will be sent when availability is reported to this topic."
+  entities_json:
+    name: "Entities"
+    description: "One JSON object per entry. For information on how to configure these, see the README in the Info tab."
+
