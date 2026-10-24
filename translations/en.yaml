@@ -49,4 +49,5 @@ configuration:
   entities_json:
     name: "Entities"
     description: "One JSON object per entry. For information on how to configure these, see the README in the Info tab."
-
+network:
+  10022/udp: "Port for forwarding (and sniffing) traffic to the Spa system."
