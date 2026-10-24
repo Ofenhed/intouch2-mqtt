@@ -565,7 +565,7 @@ async fn main() -> anyhow::Result<()> {
                 configuration_url: env::var("HOSTNAME")
                     .map(|hostname| {
                         format!(
-                            "homeassistant://hassio/addon/{hostname}/config",
+                            "homeassistant://config/app/{hostname}/info",
                             hostname = hostname.replacen('-', "_", 1)
                         )
                     })
